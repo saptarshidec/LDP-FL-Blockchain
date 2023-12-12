@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Form</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-4bw+/aepP/YC94hEpVNVgiZdgIC5+VKNBQNGCHeKRQN+PtmoHDEXuppvnDJzQIu9" crossorigin="anonymous">
+</head>
+
+<body class="container">
+    <div class="m-3"></div>
+        <div class="mb-3">
+            <label for="key" class="form-label">CN</label>
+            <input type="text" class="form-control" id="cn">
+        </div>
+        <div class="mb-3">
+            <label for="value" class="form-label">Data</label>
+            <input type="text" class="form-control" id="data">
+        </div>
+        <div class="mb-3">
+            <label for="value" class="form-label">Round</label>
+            <input type="text" class="form-control" id="round">
+        </div>
+        <button type="submit" class="btn btn-primary putdata">Put Data</button>
+        <button type="submit" class="btn btn-primary getresult">Get Result</button>
+        <button type="submit" class="btn btn-primary getrounddata">Get Round Data</button>
+        <button type="submit" class="btn btn-primary getdata">Get Own Data</button>
+
+    <div class="m-3">Response:<div id="result"></div></div>
+
+    <script>
+
+        const putdata=document.querySelector('.putdata');
+        const getresult=document.querySelector('.getresult');
+        const getrounddata=document.querySelector('.getrounddata');
+        const getdata=document.querySelector('.getdata');
+        const result=document.querySelector('#result');
+
+        putdata.addEventListener('click',async()=>{
+            let data = document.getElementById('data').value;
+            let cn = document.getElementById('cn').value;
+
+            if(data === '' || cn === '') {
+                document.getElementById('result').innerHTML = 'Enter Data';
+                return;
+            }
+            
+            const response = await fetch('http://localhost:5001/putdata', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    data: data, 
+                    cn: cn
+                })
+            });
+
+            data = await response.json();
+            console.log(data);
+            const dataString = JSON.stringify(data.message);
+            document.getElementById('result').innerHTML = dataString;
+        })
+
+        getresult.addEventListener('click',async()=>{
+            const cn = document.getElementById('cn').value;
+            const round = document.getElementById('round').value;
+            if(cn === '') {
+                document.getElementById('result').innerHTML = 'Enter CN';
+                return;
+            }
+            
+            const response = await fetch('http://localhost:5001/getresult', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    cn: cn, 
+                    round: round
+                })
+            });
+
+            const data = await response.json();
+            console.log(data);
+            const dataString = JSON.stringify(data.message);
+            document.getElementById('result').innerHTML = dataString;
+        })
+
+        getrounddata.addEventListener('click',async()=>{
+            const round = document.getElementById('round').value;
+            if(round === '') {
+                document.getElementById('result').innerHTML = 'Enter Round';
+                return;
+            }
+            
+            const response = await fetch('http://localhost:5001/getrounddata', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    round: round
+                })
+            });
+
+            const data = await response.json();
+            console.log(data);
+            const dataString = JSON.stringify(data.message);
+            const dataRecords = JSON.stringify(data.records);
+            document.getElementById('result').innerHTML = dataString + '<br>' + dataRecords;
+        })
+
+        getdata.addEventListener('click',async()=>{
+            
+            const response = await fetch('http://localhost:5001/getdata', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const data = await response.json();
+            console.log(data);
+            const dataString = JSON.stringify(data.message);
+            const dataRecords = JSON.stringify(data.records);
+            document.getElementById('result').innerHTML = dataString + '<br>' + dataRecords;
+        })
+
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-HwwvtgBNo3bZJJLYd8oVXjrBZt8cqVSpeBNS5n7C8IVInixGAoxmnlMuBnhbgrkm"
+        crossorigin="anonymous"></script>
+
+</html>
