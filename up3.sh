@@ -21,11 +21,15 @@ case "$1" in
         npx nodemon main_new.js 5001 &
         npx nodemon main_new.js 5002 &
         npx nodemon main_new.js 5003 &
+        # npx nodemon main_new.js 5004 &
+        # npx nodemon main_new.js 5005 &
         cd ../reactapp/
         PORT=3000 REACT_APP_BACKEND_PORT=5000 npm start &
         PORT=3001 REACT_APP_BACKEND_PORT=5001 npm start &
         PORT=3002 REACT_APP_BACKEND_PORT=5002 npm start &
         PORT=3003 REACT_APP_BACKEND_PORT=5003 npm start &
+        # PORT=3004 REACT_APP_BACKEND_PORT=5004 npm start &
+        # PORT=3005 REACT_APP_BACKEND_PORT=5005 npm start &
         ;;
     "kill")
         killall node

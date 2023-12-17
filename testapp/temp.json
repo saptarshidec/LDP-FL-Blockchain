@@ -1,9 +1,699 @@
-{
-    "credentials": {
-        "certificate": "-----BEGIN CERTIFICATE-----\nMIIB8jCCAZmgAwIBAgIUDfaV5hj7NyGZZ49F2Lyecl1ZD7swCgYIKoZIzj0EAwIw\ncDELMAkGA1UEBhMCVVMxFzAVBgNVBAgTDk5vcnRoIENhcm9saW5hMQ8wDQYDVQQH\nEwZEdXJoYW0xGTAXBgNVBAoTEG9yZzEuZXhhbXBsZS5jb20xHDAaBgNVBAMTE2Nh\nLm9yZzEuZXhhbXBsZS5jb20wHhcNMjMwOTA5MDkwMDAwWhcNMjQwOTA4MTIzMzAw\nWjAhMQ8wDQYDVQQLEwZjbGllbnQxDjAMBgNVBAMTBWFkbWluMFkwEwYHKoZIzj0C\nAQYIKoZIzj0DAQcDQgAEOsDg/j/Rvz45pLznNJgPfWCyhViNXT9SHA/y6s0TpUiy\nBSaoHTQ3k+opqYjq9hkthP0QcQbtnfYXINtIeoZnvaNgMF4wDgYDVR0PAQH/BAQD\nAgeAMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFMmDIdHn9gmyaC/eMxClkvLG3dRJ\nMB8GA1UdIwQYMBaAFOV7HwFNh4DHJ4hYMNLwdXjiSAgjMAoGCCqGSM49BAMCA0cA\nMEQCICcG25nZXfwCU7uVTPgnnSkkPrgOfLr3UK3ftBG0EdA9AiAJtrlQVSOPkeZx\npMupurgp1iinlBrv/MedgOKGXd9qmw==\n-----END CERTIFICATE-----\n",
-        "privateKey": "-----BEGIN PRIVATE KEY-----\r\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgXsOQV2ugnVHc557L\r\naNp4R9oBvoro1LNDYkl/FboNcHWhRANCAAQ6wOD+P9G/PjmkvOc0mA99YLKFWI1d\r\nP1IcD/LqzROlSLIFJqgdNDeT6impiOr2GS2E/RBxBu2d9hcg20h6hme9\r\n-----END PRIVATE KEY-----\r\n"
-    },
-    "mspId": "Org1MSP",
-    "type": "X.509",
-    "version": 1
+const FabricCAServices = require('fabric-ca-client');
+const { Gateway, Wallets } = require('fabric-network');
+const express = require('express');
+const app = express();
+const fs = require('fs')
+const path = require('path')
+const cors = require('cors')
+const tf = require('@tensorflow/tfjs-node');
+const mnist = require('mnist');
+const { randomInt } = require('crypto');
+// const { random } = require('mathjs');
+
+app.use(express.urlencoded({ extended: 'false' }));
+app.use(express.json());
+app.use(cors());
+
+let contract;
+let mychannel;
+let dataSeed;
+let images_per_digit;
+let test_images_per_digit;
+let epsilon;
+
+let weightLayer1;
+let biasLayer1;
+let weightLayer2;
+let biasLayer2;
+let weightLayer3;
+let biasLayer3;
+let weightLayer4;
+let biasLayer4;
+
+let model;
+
+function LDP_FL(weight, c = 0.0, r = 0.075, eps = 1) {
+
+    var rand_val = Math.random();
+
+    if (weight > 0.15) {
+        weight = 0.15
+    }
+    else if (weight < -0.15) {
+        weight = -0.15
+    }
+    var boundary = (r * (Math.exp(eps) + 1) + (weight - c) * (Math.exp(eps) - 1)) / (2 * r * (Math.exp(eps) + 1));
+
+    if (rand_val <= boundary) {
+        return c + r * ((Math.exp(eps) + 1) / (Math.exp(eps) - 1));
+    }
+    else {
+        return c - r * ((Math.exp(eps) + 1) / (Math.exp(eps) - 1));
+    }
 }
+
+function perturbWeights(weightTensor, c = 0, r = 0.15, eps = 1) {
+    // console.log("Entered")
+    const weightValues = weightTensor.dataSync();
+    const processedWeightValues = weightValues.map(val => LDP_FL(val, c, r, eps));
+    const newWeightTensor = tf.tensor(processedWeightValues, weightTensor.shape);
+    weightTensor.assign(newWeightTensor);
+    // const paramValue = param.dataSync();
+    // const processedParamValue = paramValue.map(val => LDP_FL(val, c, r, epsilon));
+    // const newParamValue = tf.tensor(processedParamValue, param.shape);
+    // param.assign(newParamValue);
+    // console.log("New param value=",weightTensor)
+}
+
+const weights_ldp = async () => {
+    tf.tidy(() => {
+        for (const layer of model.layers) {
+            // console.log("Hello")
+            // const params = Array.from(layer.trainableVariables);
+            // console.log("Hey")
+            const weights = layer.getWeights();
+            for (const weightTensor of weights) {
+                // with torch.no_grad():
+                //     for model in client_models:
+                //         for param in model.parameters():
+                // start = time.time()
+                // param_value = param.data.flatten()
+                // processed_param_value = torch.tensor([LDP_FL(val, c = 0, r = 0.075, epsilon = 1) for val in param_value])
+                // new_param_value = processed_param_value.reshape(param.size())
+                // param.data.copy_(new_param_value)
+                perturbWeights(weightTensor, 0, 0.15, 8)
+                // end =time.time()
+                // print(f"Time taken for perturbing {len(param_value)} values using LDP-FL : {end-start} seconds.")
+            }
+        }
+        console.log('Model perturbed!')
+    });
+
+    // model_params = [model.state_dict() for model in client_models]
+    // avg_params = {}
+    // for param_name in model_params[0]:
+    //     avg_params[param_name] = torch.mean(torch.stack([params[param_name] for params in model_params]), 0)
+    // global_model.load_state_dict(avg_params)
+
+    // for model in all_models:
+    //     model.load_state_dict(global_model.state_dict())
+
+    // return
+
+    const weights = model.getWeights();
+
+    const layer1 = model.layers[0].getWeights();
+    const layer2 = model.layers[2].getWeights();
+    const layer3 = model.layers[5].getWeights();
+    const layer4 = model.layers[6].getWeights();
+
+    weightLayer1 = layer1[0];
+    biasLayer1 = layer1[1];
+
+    weightLayer2 = layer2[0];
+    biasLayer2 = layer2[1];
+
+    weightLayer3 = layer3[0];
+    biasLayer3 = layer3[1];
+
+    weightLayer4 = layer4[0];
+    biasLayer4 = layer4[1];
+
+    const weightsJSON = weights.map((weight) => weight.arraySync());
+
+    return weightsJSON;
+}
+
+const getAccuracy = async () => {
+    // const set = mnist.set(5, dataSeed);
+    // const testSet = set.test;
+    // const inputs = testSet.map((d) => d.input);
+    // const outputs = testSet.map((d) => d.output);
+
+    var inputtest = []
+    var outputtest = []
+    for (let i = 0; i <= 9; i++) {
+        // console.log("Size of dataset for 1 digit=",mnist[i].length)
+        // let set=mnist[i].set(dataSeed,dataSeed+images_per_digit-1);
+        let set = mnist[i].set(dataSeed + images_per_digit, dataSeed + images_per_digit + test_images_per_digit - 1);
+        // console.log("set 0 =",set[0])
+        // console.log("set =",set)
+        // console.log("set 0 type =",typeof set[0])
+        // console.log("set type=",typeof set)
+        // console.log("Set=",set)
+        for (let j = 0; j < test_images_per_digit; j++) {
+            let ip = set[j].input;
+            let op = set[j].output;
+            // console.log("ip=",ip)
+            // console.log(typeof ip)
+            // console.log("ip length=",ip.length)
+            // console.log("op length=",op.length)
+            // inputs.push(ip);
+            // outputs.push(op);
+            inputtest = inputtest.concat(ip);
+            outputtest = outputtest.concat(op);
+        }
+    }
+
+    // const newInputs = inputs.map((input) => {
+    //     const newInput = [];
+    //     for (let i = 0; i < input.length; i++) {
+    //         if (i % 4 === 0) {
+    //             newInput.push(input[i]);
+    //         }
+    //     }
+    //     return newInput;
+    // });
+
+    const xTest = tf.tensor4d(inputtest, [inputtest.length / 784, 28, 28, 1]);
+    const yTest = tf.tensor2d(outputtest, [outputtest.length / 10, 10]);
+
+    // const result = model.evaluate(xTest, yTest, { verbose: 0 });
+    // const testLoss = result[0].dataSync()[0];
+
+    const predictions = model.predict(xTest);
+    const predictionsArray = predictions.arraySync();
+    const yTestArray = yTest.arraySync();
+
+    let correct = 0;
+    for (let i = 0; i < predictionsArray.length; i++) {
+        const predictedLabel = predictionsArray[i].indexOf(Math.max(...predictionsArray[i]));
+        const actualLabel = yTestArray[i].indexOf(Math.max(...yTestArray[i]));
+        if (predictedLabel === actualLabel) correct++;
+    }
+
+    const accuracy = correct / predictionsArray.length;
+
+    // dispose of tensors we are finished with
+    xTest.dispose();
+    yTest.dispose();
+    predictions.dispose();
+    return accuracy;
+}
+
+app.post('/getroundweights', async (req, res) => {
+    const { num } = req.body;
+    try {
+        const seed = randomInt(1000);
+        // set both peers as endorsers
+        console.log(contract)
+        const transaction = contract.createTransaction('GetRoundData');
+        transaction.setEndorsingOrganizations('Org1MSP', 'Org2MSP');
+        const result = await transaction.submit(num, seed);
+        const weightsArray = JSON.parse(result.toString());
+
+        if (weightsArray.length === 0) {
+            res.json({ "message": "No Weights found in this Round", "records": [] });
+            return;
+        }
+
+        console.log("Length of weights array = ", weightsArray.length);
+        console.log("Weights array shape=", weightsArray.shape)
+        // console.log("Weights array[0]=",weightsArray[0])
+
+        let layer1AvgWeight = tf.zeros([3, 3, 1, 16]);
+        let layer1AvgBias = tf.zeros([16]);
+        let layer2AvgWeight = tf.zeros([3, 3, 1, 32]);
+        let layer2AvgBias = tf.zeros([32]);
+        let layer3AvgWeight = tf.zeros([800, 128]);
+        let layer3AvgBias = tf.zeros([128]);
+        let layer4AvgWeight = tf.zeros([128, 10]);
+        let layer4AvgBias = tf.zeros([10]);
+
+        let i = 1;
+        weightsArray.forEach((weights, index) => {
+            const weightsString = (Buffer.from(weights, 'base64').toString());
+            const weight = JSON.parse(weightsString);
+            console.log("Layer =", index)
+            // console.log("Weight =",weight)
+            console.log("Weight shape=", weight.length)
+            console.log("conv layer 1 weights (Weight[0]) shape=", weight[0].length)
+            console.log("Weight[0][0] shape=", weight[0][0].length)
+            console.log("Weight[0][0][0] shape=", weight[0][0][0].length)
+            console.log("Weight[0][0][0][0] shape=", weight[0][0][0][0].length)
+            console.log("conv layer 1 bias (Weight[1]) shape=", weight[1].length)
+            console.log("conv layer 2 weights (Weight[2]) shape=", weight[2].length)
+            console.log("conv layer 2 bias (Weight[3]) shape=", weight[3].length)
+            console.log("Dense layer 1 weights (Weight[4]) shape=", weight[4].length)
+            console.log("Dense layer 1 bias (Weight[5]) shape=", weight[5].length)
+            console.log("Dense layer 2 weights (Weight[6]) shape=", weight[6].length)
+            console.log("Dense layer 2 bias (Weight[7]) shape=", weight[7].length)
+            layer1AvgWeight = layer1AvgWeight.add(tf.tensor4d(weight[0]));
+            layer1AvgBias = layer1AvgBias.add(tf.tensor1d(weight[1]));
+            layer2AvgWeight = layer2AvgWeight.add(tf.tensor4d(weight[2]));
+            layer2AvgBias = layer2AvgBias.add(tf.tensor1d(weight[3]));
+            layer3AvgWeight = layer3AvgWeight.add(tf.tensor2d(weight[4]));
+            layer3AvgBias = layer3AvgBias.add(tf.tensor1d(weight[5]));
+            layer4AvgWeight = layer4AvgWeight.add(tf.tensor2d(weight[6]));
+            layer4AvgBias = layer4AvgBias.add(tf.tensor1d(weight[7]));
+            //console.log("Round ",i," done")
+            i = i + 1;
+        })
+        console.log("Outside")
+        layer1AvgWeight = layer1AvgWeight.div(weightsArray.length);
+        layer1AvgBias = layer1AvgBias.div(weightsArray.length);
+        layer2AvgWeight = layer2AvgWeight.div(weightsArray.length);
+        layer2AvgBias = layer2AvgBias.div(weightsArray.length);
+        layer33vgWeight = layer3AvgWeight.div(weightsArray.length);
+        layer3AvgBias = layer3AvgBias.div(weightsArray.length);
+        layer4AvgWeight = layer4AvgWeight.div(weightsArray.length);
+        layer4AvgBias = layer4AvgBias.div(weightsArray.length);
+
+        const avgWeights = [layer1AvgWeight.arraySync(), layer1AvgBias.arraySync(), layer2AvgWeight.arraySync(), layer2AvgBias.arraySync(), layer3AvgWeight.arraySync(), layer3AvgBias.arraySync(), layer4AvgWeight.arraySync(), layer4AvgBias.arraySync()];
+        const jsonData = JSON.stringify(avgWeights);
+        // for(let i=0; i<avgWeights[0][0].length; i++){
+        //     avgWeights[0][0][i]=avgWeights[0][0][i].toFixed(2);
+        // }
+        // const sendWeights = JSON.stringify(avgWeights[0][0])
+        const base64weights = Buffer.from(jsonData).toString('base64');
+        await contract.submitTransaction('PutData', base64weights.toString(), "appserver", epsilon)
+
+        // dispose of tensors we are finished with
+        // layer1AvgWeight.dispose();
+        // layer1AvgBias.dispose();
+        // layer2AvgWeight.dispose();
+        // layer2AvgBias.dispose();
+        // layer3AvgWeight.dispose();
+        // layer3AvgBias.dispose();
+        // layer4AvgWeight.dispose();
+        // layer4AvgBias.dispose();
+
+        res.json({ "message": `Weights Fetched Successfully`, "records": ["Layer1 Unit1 Weight[0]: " + avgWeights[0][0][0], "Layer1 Bias[0]: " + avgWeights[1][0], "Layer2 Unit1 Weight[0]: " + avgWeights[2][0][0], "Layer2 Bias[0]: " + avgWeights[3][0]] });
+    }
+    catch (err) {
+        console.log(err.message);
+        res.json({ "message": err.message, "records": [] });
+    }
+})
+
+app.get('/getaccuracy', async (req, res) => {
+    try {
+        const accuracy = await getAccuracy();
+        res.json({ "message": `Accuracy: ${accuracy}` });
+    }
+    catch (err) {
+        console.log(err);
+        res.json({ "message": err });
+    }
+})
+
+app.post('/getweights', async (req, res) => {
+    const { full } = req.body;
+    try {
+        const result = await contract.evaluateTransaction('GetData')
+        const jsonResult = JSON.parse(result.toString());
+
+        jsonResult.data.forEach((record, index) => {
+            const data = record.data;
+            // console.log("Record=",record)
+            // console.log("Index=",index)
+            // console.log("Data length=",data.length)
+            const weightsArray = (Buffer.from(data, 'base64').toString());
+            if (full === "true") jsonResult.data[index].data = weightsArray;
+            else if (full == "false") {
+                let ww = JSON.parse(weightsArray);
+                jsonResult.data[index].data = ["Layer1 Unit1 Weight[0]: " + ww[0][0][0], "Layer1 Bias[0]: " + ww[1][0], "Layer2 Unit1 Weight[0]: " + ww[2][0][0], "Layer2 Bias[0]: " + ww[3][0]]
+            }
+            else delete jsonResult.data[index].data;
+        })
+
+        res.json({ "message": "Weights Fetched Successfully", "records": jsonResult });
+    }
+    catch (err) {
+        console.log(err.message);
+        res.json({ "message": err.message, "records": [] });
+    }
+})
+
+app.post('/getresult', async (req, res) => {
+    const { round } = req.body;
+    try {
+        const cn = "appserver"
+        const transaction = contract.createTransaction('GetResult');
+        transaction.setEndorsingOrganizations('Org1MSP', 'Org2MSP');
+        const result = await transaction.submit(cn, round);
+        const weightsArray = JSON.parse(Buffer.from(result.toString(), 'base64').toString());
+
+        weightLayer1 = tf.tensor4d(weightsArray[0]);
+        biasLayer1 = tf.tensor1d(weightsArray[1]);
+        weightLayer2 = tf.tensor4d(weightsArray[2]);
+        biasLayer2 = tf.tensor1d(weightsArray[3]);
+        weightLayer3 = tf.tensor2d(weightsArray[4]);
+        biasLayer3 = tf.tensor1d(weightsArray[5]);
+        weightLayer4 = tf.tensor2d(weightsArray[6]);
+        biasLayer4 = tf.tensor1d(weightsArray[7]);
+
+        model.setWeights([weightLayer1, biasLayer1, weightLayer2, biasLayer2, weightLayer3, biasLayer3, weightLayer4, biasLayer4]);
+        console.log("Convolutional Layer 1 Weight[0][0] -", model.layers[0].getWeights()[0].arraySync()[0][0][0]);
+        // console.log("Conv layer 1 weight shape",model.layers[0].getWeights()[0].shape)
+        // console.log("Conv layer 1 bias shape",model.layers[2].getWeights()[1].shape)
+        // console.log("Conv layer 2 weight shape",model.layers[0].getWeights()[0].shape)
+        // console.log("Conv layer 2 bias shape",model.layers[2].getWeights()[1].shape)
+        // console.log("Dense layer 1 weight shape",model.layers[5].getWeights()[0].shape)
+        // console.log("Dense layer 1 bias shape",model.layers[5].getWeights()[1].shape)
+        // console.log("Dense layer 2 weight shape",model.layers[6].getWeights()[0].shape)
+        // console.log("Dense layer 2 bias shape",model.layers[6].getWeights()[1].shape)
+        console.log("Weights set")
+        res.json({ "message": "Result Fetched Successfully", "records": weightsArray });
+    }
+    catch (err) {
+        console.log(err.message);
+        res.json({ "message": err.message, "records": [] });
+    }
+})
+
+const calculateWeights = async () => {
+
+    // const set = mnist.set(5, dataSeed);
+    // const trainingSet = set.training;
+    // const inputs = trainingSet.map((d) => d.input);
+    // const outputs = trainingSet.map((d) => d.output);
+
+    // console.log("Before Training")
+    // console.log("Convolutional Layer 1 Weight[0][0] -", model.layers[0].getWeights()[0].arraySync()[0][0][0]);
+    // console.log("Convolutional Layer 1 Bias[0] -", model.layers[0].getWeights()[1].arraySync()[0]);
+    // console.log("Convolutional Layer 2 Weight[0][0] -", model.layers[2].getWeights()[0].arraySync()[0][0][0]);
+    // console.log("Convolutional Layer 2 Bias[0] -", model.layers[2].getWeights()[1].arraySync()[0]);
+
+    // dataSeed=100;
+
+    console.log("Data Seed=", dataSeed, "Images per digit=", images_per_digit, "Test images per digit=", test_images_per_digit)
+    var inputs = []
+    var outputs = []
+    for (let i = 0; i <= 9; i++) {
+        console.log("Size of dataset for 1 digit=", mnist[i].length)
+        // let set=mnist[i].set(dataSeed,dataSeed+images_per_digit-1);
+        let set = mnist[i].set(dataSeed, dataSeed + images_per_digit - 1);
+        // console.log("set 0 =",set[0])
+        // console.log("set =",set)
+        // console.log("set 0 type =",typeof set[0])
+        // console.log("set type=",typeof set)
+        // console.log("Set=",set)
+        for (let j = 0; j < images_per_digit; j++) {
+            let ip = set[j].input;
+            let op = set[j].output;
+            // console.log("ip=",ip)
+            // console.log(typeof ip)
+            // console.log("ip length=",ip.length)
+            // console.log("op length=",op.length)
+            // inputs.push(ip);
+            // outputs.push(op);
+            inputs = inputs.concat(ip);
+            outputs = outputs.concat(op);
+        }
+        // inputs = inputs.concat(set.map((d) => d.input));
+        // outputs = outputs.concat(set.map((d) => d.output));
+    }
+
+
+    // console.log("inputs=",inputs)
+    // console.log("Outputs=",outputs)
+    console.log("Output length=", outputs.length)
+    console.log("Len=", inputs.length)
+    // const newInputs = inputs.map((input) => {
+    //     const newInput = [];
+    //     for (let i = 0; i < input.length; i++) {
+    //         if (i % 4 === 0) {
+    //             newInput.push(input[i]);
+    //         }
+    //     }
+    //     return newInput;
+    // });
+    console.log("Inputs shape=", inputs.length)
+    // console.log("Inputs[0] shape=",inputs[0].length)
+    // console.log("Inputs[0][0] shape=",inputs[0][0].length)
+    console.log("Outputs shape=", outputs.length)
+    const xTrain = tf.tensor4d(inputs, [inputs.length / 784, 28, 28, 1]);
+    // console.log("xTrain=",xTrain.arraySync()[0])
+    // const yTrain=outputs;
+    const yTrain = tf.tensor2d(outputs, [outputs.length / 10, 10]);
+    // console.log("yTrain=",yTrain.arraySync())
+
+    await model.fit(xTrain, yTrain, {
+        epochs: 1,
+        verbose: 0,
+    });
+
+    console.log("After Training")
+    // const layer1 = model.layers[0].getWeights();
+    // const layer2 = model.layers[2].getWeights();
+    // const layer3 = model.layers[5].getWeights();
+    // const layer4 = model.layers[6].getWeights();
+
+    // weightLayer1=layer1[0];
+    console.log("Convolutional Layer 1 Weight[0][0] -", model.layers[0].getWeights()[0].arraySync()[0][0][0]);
+    console.log("Convolutional Layer 1 Bias[0] -", model.layers[0].getWeights()[1].arraySync()[0]);
+    console.log("Convolutional Layer 2 Weight[0][0] -", model.layers[2].getWeights()[0].arraySync()[0][0][0]);
+    console.log("Convolutional Layer 2 Bias[0] -", model.layers[2].getWeights()[1].arraySync()[0]);
+
+    // console.log("Conv layer 1 weight shape",model.layers[0].getWeights()[0].shape)
+    // console.log("Conv layer 1 bias shape",model.layers[2].getWeights()[1].shape)
+    // console.log("Conv layer 2 weight shape",model.layers[0].getWeights()[0].shape)
+    // console.log("Conv layer 2 bias shape",model.layers[2].getWeights()[1].shape)
+    // console.log("Dense layer 1 weight shape",model.layers[5].getWeights()[0].shape)
+    // console.log("Dense layer 1 bias shape",model.layers[5].getWeights()[1].shape)
+    // console.log("Dense layer 2 weight shape",model.layers[6].getWeights()[0].shape)
+    // console.log("Dense layer 2 bias shape",model.layers[6].getWeights()[1].shape)
+
+    const weights = model.getWeights();
+
+    const layer1 = model.layers[0].getWeights();
+    const layer2 = model.layers[2].getWeights();
+    const layer3 = model.layers[5].getWeights();
+    const layer4 = model.layers[6].getWeights();
+
+    weightLayer1 = layer1[0];
+    biasLayer1 = layer1[1];
+
+    weightLayer2 = layer2[0];
+    biasLayer2 = layer2[1];
+
+    weightLayer3 = layer3[0];
+    biasLayer3 = layer3[1];
+
+    weightLayer4 = layer4[0];
+    biasLayer4 = layer4[1];
+
+    const weightsJSON = weights.map((weight) => weight.arraySync());
+
+    // dispose of tensors we are finished with
+    xTrain.dispose();
+    yTrain.dispose();
+    return weightsJSON;
+}
+
+app.get('/putweights', async (req, res) => {
+
+    try {
+        const cn = "appserver"
+        var weights = await calculateWeights();
+        // console.log("Weights before perturbing=",weights)
+        weights = await weights_ldp();
+        // console.log("Weights after perturbing=",weights)
+        const base64Weights = Buffer.from(JSON.stringify(weights)).toString('base64');
+        // console.log("base64Weights=",base64Weights)
+        await contract.submitTransaction('PutData', base64Weights, cn, epsilon);
+        res.json({ "message": "Weights Pushed to Ledger Successfully", "records": ["Layer1 Unit1 Weight[0]: " + weights[0][0][0], "Layer1 Bias[0]: " + weights[1][0], "Layer2 Unit1 Weight[0]: " + weights[2][0][0], "Layer2 Bias[0]: " + weights[3][0]] });
+    }
+    catch (err) {
+        console.log(err.message);
+        res.json({ "message": err.message, "records": [] });
+    }
+})
+
+app.post('/login', async (req, res) => {
+
+    const { orgName, userName } = req.body;
+    try {
+
+        const chainCode = "rounds3";
+        const ccpPath = path.resolve(`../../test-network/organizations/peerOrganizations/${orgName}.example.com/connection-${orgName}.json`);
+        const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
+
+        const caInfo = ccp.certificateAuthorities[`ca.${orgName}.example.com`];
+        const caTLSCACerts = caInfo.tlsCACerts.pem;
+        const ca = new FabricCAServices(caInfo.url, { trustedRoots: caTLSCACerts, verify: false }, caInfo.caName);
+
+        const walletPath = path.join(process.cwd(), 'wallet');
+        const wallet = await Wallets.newFileSystemWallet(walletPath);
+
+        const enrollment = await ca.enroll({
+            enrollmentID: 'admin',
+            enrollmentSecret: 'adminpw'
+        });
+
+        const orgMSP = `${orgName.charAt(0).toUpperCase() + orgName.slice(1)}MSP`;
+
+        const x509Identity = {
+            credentials: {
+                certificate: enrollment.certificate,
+                privateKey: enrollment.key.toBytes()
+            },
+            mspId: orgMSP,
+            type: 'X.509'
+        };
+
+        await wallet.put(`admin${orgName}`, x509Identity);
+        console.log(`Successfully enrolled admin user admin${orgName} and imported it into the wallet`);
+
+        const adminIdentity = await wallet.get(`admin${orgName}`);
+        const provider = wallet.getProviderRegistry().getProvider(adminIdentity.type);
+
+        const adminUser = await provider.getUserContext(adminIdentity, `admin${orgName}`);
+
+        const getUser = await wallet.get(userName);
+        if (!getUser) {
+            const secret = await ca.register({
+                affiliation: `${orgName}.department1`,
+                enrollmentID: userName,
+                role: 'client'
+            }, adminUser);
+
+            const enrollment2 = await ca.enroll({
+                enrollmentID: userName,
+                enrollmentSecret: secret
+            });
+
+            const x509Identity2 = {
+                credentials: {
+                    certificate: enrollment2.certificate,
+                    privateKey: enrollment2.key.toBytes()
+                },
+                mspId: orgMSP,
+                type: 'X.509'
+            };
+
+            await wallet.put(userName, x509Identity2);
+            console.log(`Successfully enrolled user ${userName} and imported it into the wallet`);
+        }
+        else {
+            console.log(`User ${userName} already exists`);
+        }
+
+        const userIdentity = await wallet.get(userName);
+        const gateway = new Gateway();
+
+        await gateway.connect(ccp, {
+            wallet,
+            identity: userName,
+            discovery: { enabled: true, asLocalhost: true }
+        });
+
+
+
+        // weightLayer1=tf.randomNormal([, 196]);
+        // biasLayer1=tf.randomNormal([196]);
+        // weightLayer2=tf.randomNormal([196, 10]);
+        // biasLayer2=tf.randomNormal([10]);
+        // weightLayer1=tf.randomNormal([196, 196]);
+        // biasLayer1=tf.randomNormal([196]);
+        // weightLayer2=tf.randomNormal([196, 10]);
+        // biasLayer2=tf.randomNormal([10]);
+
+        // model.setWeights([weightLayer1, biasLayer1, weightLayer2, biasLayer2]);
+
+        console.log("Connected to Gateway");
+        mychannel = await gateway.getNetwork('mychannel');
+
+        contract = mychannel.getContract(chainCode);
+        if (!getUser) await contract.submitTransaction('InitLedger');
+
+        console.log("Gateway connected");
+        res.json({ "message": "Login Successful" });
+    }
+    catch (err) {
+        console.log(err);
+        res.json({ "message": "Login Failed" });
+    }
+})
+
+const PORT = process.argv[2];
+app.listen(PORT, async () => {
+    console.log(`Server is running on port ${PORT}`);
+    console.log("Initializing Model")
+    model = tf.sequential();
+    // model.add(tf.layers.dense({ inputShape: [196], units: 196, activation: 'relu' }));
+    // model.add(tf.layers.dense({ units: 10, activation: 'softmax'}));
+    // model.compile({ optimizer: 'sgd', loss: 'categoricalCrossentropy', metrics: ['accuracy'] });
+
+    // epsilon=Math.random();
+    epsilon = 8;
+    images_per_digit = 75;
+    test_images_per_digit = 15;
+    const initialWeight = 0.05
+
+    model.add(tf.layers.conv2d({
+        inputShape: [28, 28, 1], // MNIST images are 28x28 pixels and have a single channel
+        filters: 16,
+        kernelSize: 3,
+        activation: 'relu',
+        kernelInitializer: 'randomNormal'
+        // kernelInitializer: tf.initializers.constant({ value: initialWeight })
+    }));
+
+    // Add a max pooling layer
+    model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }));
+
+    // Add another 2D convolutional layer with 64 filters
+    model.add(tf.layers.conv2d({
+        filters: 32,
+        kernelSize: 3,
+        activation: 'relu',
+        kernelInitializer: 'randomNormal'
+        // kernelInitializer: tf.initializers.constant({ value: initialWeight })
+    }));
+
+    // Add another max pooling layer
+    model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }));
+
+    //   Flatten the output to connect to dense layers
+    model.add(tf.layers.flatten());
+
+    // Add a dense layer with 128 units and ReLU activation
+    model.add(tf.layers.dense({
+        units: 128,
+        activation: 'relu',
+        kernelInitializer: 'randomNormal'
+        // kernelInitializer: tf.initializers.constant({ value: initialWeight }) 
+    }));
+
+    // Add the output layer with 10 units (for 10 classes) and softmax activation
+    model.add(tf.layers.dense({
+        units: 10,
+        activation: 'softmax',
+        kernelInitializer: 'randomNormal'
+        // kernelInitializer: tf.initializers.constant({ value: initialWeight }) 
+    }));
+
+    // Compile the model
+    model.compile({
+        optimizer: 'adam',
+        loss: 'categoricalCrossentropy',
+        metrics: ['accuracy']
+    });
+
+    dataSeed = 100 * (parseInt(PORT) % 100);
+    // Print a summary of the model's architecture
+    model.summary();
+
+
+    const layer1 = model.layers[0].getWeights();
+    const layer2 = model.layers[2].getWeights();
+    const layer3 = model.layers[5].getWeights();
+    const layer4 = model.layers[6].getWeights();
+
+    weightLayer1 = layer1[0];
+    biasLayer1 = layer1[1];
+
+    weightLayer2 = layer2[0];
+    biasLayer2 = layer2[1];
+
+    weightLayer3 = layer3[0];
+    biasLayer3 = layer3[1];
+
+    weightLayer4 = layer4[0];
+    biasLayer4 = layer4[1];
+
+
+    console.log("Model Initialized")
+})
