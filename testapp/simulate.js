@@ -7,12 +7,13 @@ const mnist = require('mnist');
 const { randomInt } = require('crypto');
 
 let contract=[null, null, null, null]
+let gateways=[null, null, null, null]
 let nclients=4
-let nepochs=1
-let epsilonArray=[4, 4, 4, 4]
+let nepochs=10
+let epsilonArray=[1, 1, 10, 20]
 let userNames = ["appserver", "appuser1", "appuser2", "appuser3"]
 let models = [null, null, null, null]
-let images_per_digit=15
+let images_per_digit=75
 let test_images_per_digit=15
 let dataseed = [0, 0, 0, 0]
 const initialWeight=0.05
@@ -156,6 +157,8 @@ const initClients = async() =>{
 
             const network = await gateway.getNetwork('mychannel');
             contract[i] = network.getContract(chainCode);
+
+            gateways[i] = gateway;
 
             if(!getUser) await contract[i].submitTransaction('InitLedger');
             console.log("Gateway connected for user "+userName);
@@ -437,6 +440,9 @@ const simulate = async() =>{
     await initClients();
     initModels();
     await simulFunc();
+    for(let i=0;i<nclients;++i){
+        await gateways[i].disconnect();
+    }
 }
 
 simulate();

@@ -436,9 +436,9 @@ func (sc *SmartContract) GetResult(ctx contractapi.TransactionContextInterface, 
 		}
 	}
 
-	if clientData.Tokens <1 {
-		return NeuralNetworkModel{}, fmt.Errorf("client %s does not have sufficient tokens", clientCN)
-	}
+	// if clientData.Tokens <1 {
+	// 	return NeuralNetworkModel{}, fmt.Errorf("client %s does not have sufficient tokens", clientCN)
+	// }
 
 	//check how many tokens the server has remaining, and calculate the cost of the client
 	// var tokens_remaining float=serverData.Tokens
