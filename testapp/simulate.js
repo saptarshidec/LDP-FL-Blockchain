@@ -6,16 +6,16 @@ const tf = require('@tensorflow/tfjs-node');
 const mnist = require('mnist');
 const { randomInt } = require('crypto');
 
-let contract=[null, null, null, null]
-let gateways=[null, null, null, null]
-let nclients=4
+let contract=[null, null, null, null,null, null, null, null]
+let gateways=[null, null, null, null,null, null, null, null]
+let nclients=8
 let nepochs=10
-let epsilonArray=[25, 25, 25, 25]
-let userNames = ["appserver", "appuser1", "appuser2", "appuser3"]
-let models = [null, null, null, null]
-let images_per_digit=75
-let test_images_per_digit=15
-let dataseed = [0, 0, 0, 0]
+let epsilonArray=[8, 8, 8, 8,8,8,8,8]
+let userNames = ["appserver", "appuser1", "appuser2", "appuser3","appuser4","appuser5","appuser6","appuser7"]
+let models = [null, null, null, null,null, null, null, null]
+let images_per_digit=100
+let test_images_per_digit=20
+let dataseed = [0, 0, 0, 0,0, 0, 0, 0]
 const initialWeight=0.05
 
 
@@ -75,7 +75,7 @@ const initModels = () => {
         });
 
         console.log("Model "+i+" initialized");
-        dataseed[i] = 100 * i;
+        dataseed[i] = (images_per_digit+test_images_per_digit) * i;
         // models[i].summary();
     }
 
@@ -87,7 +87,7 @@ const initClients = async() =>{
     const orgName="org1"
     try{
         const chainCode = "rounds3";
-        const ccpPath = path.resolve(`../../test-network/organizations/peerOrganizations/${orgName}.example.com/connection-${orgName}.json`);
+        const ccpPath = path.resolve(`../test-network/organizations/peerOrganizations/${orgName}.example.com/connection-${orgName}.json`);
         const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
 
         const caInfo = ccp.certificateAuthorities[`ca.${orgName}.example.com`];
@@ -202,6 +202,7 @@ const calculateWeights = async(clientInd) =>{
     var outputs = []
 
     for(let i=0; i<10; i++){
+    	//console.log("Number of images for digit",i," = ",mnist[i].length)
         let set=mnist[i].set(dataseed[clientInd], dataseed[clientInd]+images_per_digit-1);
         for(let j=0; j<images_per_digit; j++){
             let ip=set[j].input;
@@ -281,14 +282,15 @@ const getRoundWeights = async(clientInd) => {
         const transaction = contract[clientInd].createTransaction('GetRoundData');
         transaction.setEndorsingOrganizations('Org1MSP', 'Org2MSP');
         const result = await transaction.submit(num, seed);
+        //console.log("Result=",result)
         const weightsArray = JSON.parse(result.toString());
 
+        //console.log("Weights array=",weightsArray)
         if(weightsArray.length == 0){
             console.log("No weights received");
             return;
         }
         num = weightsArray.length;
-
         let layerAvgWeight = [tf.zeros([3, 3, 1, 16]), tf.zeros([3, 3, 1, 32]), tf.zeros([800, 128]), tf.zeros([128, 10])];
         let layerAvgBias = [tf.zeros([16]), tf.zeros([32]), tf.zeros([128]), tf.zeros([10])];
 
@@ -304,7 +306,6 @@ const getRoundWeights = async(clientInd) => {
             layerAvgWeight[i] = tf.div(layerAvgWeight[i], num);
             layerAvgBias[i] = tf.div(layerAvgBias[i], num);
         }
-
         const modelData = {
             "layers":[
                 {
@@ -325,7 +326,7 @@ const getRoundWeights = async(clientInd) => {
                 }
             ]
         }
-
+	//console.log("Model data=",modelData)
         await contract[clientInd].submitTransaction('PutData', JSON.stringify(modelData), "appserver", epsilonArray[clientInd]);
         console.log("Client "+clientInd+" received weights and sent back");
     }
@@ -341,8 +342,22 @@ const fetchGlobalWeights = async(clientInd, round) => {
         const transaction = contract[clientInd].createTransaction('GetResult');
         transaction.setEndorsingOrganizations('Org1MSP', 'Org2MSP');
         const result = await transaction.submit(cn, round);
-        const weightsArray = JSON.parse(result.toString()).layers;
-
+        var weightsArray = JSON.parse(result.toString()).layers;
+	//console.log("Weights fetched by client ",cn," = ",result);
+	//console.log("result for client",clientInd," = ",result)
+	//if(weightsArray.length==0){
+		//models[clientInd].setWeights([
+            	//tf.zeros([3, 3, 1, 16]),
+            	//tf.zeros([16]),
+            	//tf.zeros([3, 3, 1, 32]),
+            	//tf.zeros([32]),
+           	//tf.zeros([800, 128]),
+            	//tf.zeros([128]),
+            	//tf.zeros([128, 10]),
+            	//tf.zeros([10])
+        	//])
+        //}
+        if(weightsArray.length>0){
         models[clientInd].setWeights([
             tf.tensor4d(weightsArray[0].weights),
             tf.tensor1d(weightsArray[0].biases),
@@ -353,8 +368,11 @@ const fetchGlobalWeights = async(clientInd, round) => {
             tf.tensor2d(weightsArray[3].weights),
             tf.tensor1d(weightsArray[3].biases)
         ])
-
         console.log("Client "+clientInd+" received global weights");
+        }
+	else{
+		console.log("Client "+clientInd+" doesnt have sufficient tokens");
+	}
     }
     catch(error){
         console.log("FetchGlobalWeights "+"Client ID: "+clientInd+" "+error);
@@ -405,17 +423,26 @@ const getAccuracy = async(clientInd) => {
 
 let roundAccuracies = []
 
+function getRandomEpsilon(min, max) {
+    // By multiplying and adding, we get a random integer within the desired range.
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
 const simulFunc = async()=>{
 
     try{
 
-        for(let round=1; round<=20; round++){
+        for(let round=1; round<=25; round++){
+            for(let i=1;i<nclients;++i){
+                epsilonArray[i]=getRandomEpsilon(5, 15);
+                console.log("Client ",i," epsilon=",epsilonArray[i]);
+            }
             for(let i=1;i<nclients;++i){
                 await trainModelAndPushWeights(i);
             }
     
             await getRoundWeights(0);
-    
+    		
             for(let i=1;i<nclients;++i){
                 await fetchGlobalWeights(i, round);
             }
