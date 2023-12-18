@@ -10,7 +10,7 @@ let contract=[null, null, null, null]
 let gateways=[null, null, null, null]
 let nclients=4
 let nepochs=10
-let epsilonArray=[1, 1, 10, 20]
+let epsilonArray=[25, 25, 25, 25]
 let userNames = ["appserver", "appuser1", "appuser2", "appuser3"]
 let models = [null, null, null, null]
 let images_per_digit=75
@@ -409,7 +409,7 @@ const simulFunc = async()=>{
 
     try{
 
-        for(let round=1; round<=25; round++){
+        for(let round=1; round<=20; round++){
             for(let i=1;i<nclients;++i){
                 await trainModelAndPushWeights(i);
             }
