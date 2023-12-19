@@ -226,6 +226,7 @@ const calculateWeights = async(clientInd) =>{
 
 const weights_ldp = async(clientInd) =>{
 
+    let intialModelWeights = models[clientInd].getWeights();
     tf.tidy(()=>{
         for(const layer of models[clientInd].layers){
             const weights = layer.getWeights();
@@ -234,6 +235,9 @@ const weights_ldp = async(clientInd) =>{
             }
         }
     })
+    let currModelWeights = [models[clientInd].layers[0].getWeights()[0].arraySync(), models[clientInd].layers[0].getWeights()[1].arraySync(), models[clientInd].layers[2].getWeights()[0].arraySync(), models[clientInd].layers[2].getWeights()[1].arraySync(), models[clientInd].layers[5].getWeights()[0].arraySync(), models[clientInd].layers[5].getWeights()[1].arraySync(), models[clientInd].layers[6].getWeights()[0].arraySync(), models[clientInd].layers[6].getWeights()[1].arraySync()];
+    models[clientInd].setWeights(intialModelWeights);
+    return currModelWeights;
 }
 
 const trainModelAndPushWeights = async(clientInd) =>{
@@ -241,26 +245,26 @@ const trainModelAndPushWeights = async(clientInd) =>{
     try{
         const cn = "appserver"
         var weights = await calculateWeights(clientInd);
-        await weights_ldp(clientInd);
+        weights = await weights_ldp(clientInd);
 
         const modelData = {
             "layers":[
                 {
-                    "weights": models[clientInd].layers[0].getWeights()[0].arraySync(),
-                    "biases": models[clientInd].layers[0].getWeights()[1].arraySync()
+                    "weights": weights[0],
+                    "biases": weights[1]
                 },
                 {
-                    "weights": models[clientInd].layers[2].getWeights()[0].arraySync(),
-                    "biases": models[clientInd].layers[2].getWeights()[1].arraySync()
+                    "weights": weights[2],
+                    "biases": weights[3]
                 },
                 {
-                    "weights": models[clientInd].layers[5].getWeights()[0].arraySync(),
-                    "biases": models[clientInd].layers[5].getWeights()[1].arraySync()
+                    "weights": weights[4],
+                    "biases": weights[5]
                 },
                 {
-                    "weights": models[clientInd].layers[6].getWeights()[0].arraySync(),
-                    "biases": models[clientInd].layers[6].getWeights()[1].arraySync()
-                }   
+                    "weights": weights[6],
+                    "biases": weights[7]
+                }
             ]
         }
 
