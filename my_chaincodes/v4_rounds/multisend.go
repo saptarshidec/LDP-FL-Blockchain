@@ -4,39 +4,109 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
+	"math/rand"
+	"reflect"
 )
 
 type Layer struct {
-	Weights interface {} `json:"weights"`
-	Biases []float64 `json:"biases"`
+	Weights interface{} `json:"weights"`
+	Biases  []float64   `json:"biases"`
 }
 
 type NeuralNetworkModel struct {
-	Layers[] Layer `json:"layers"`
+	Layers []Layer `json:"layers"`
 }
 
 type ClientData struct {
-    ClientID string `json:"clientID"`
-    Data NeuralNetworkModel `json:"data"`
-	Tokens float64 		`json:"tokens"`
-    Round  int    `json:"round"`
-	RoundSeen []int `json:"roundSeen"`
-	Epsilon float64		`json:"epsilon"`
+	ClientID  string             `json:"clientID"`
+	Data      NeuralNetworkModel `json:"data"`
+	Tokens    float64            `json:"tokens"`
+	Round     int                `json:"round"`
+	RoundSeen []int              `json:"roundSeen"`
+	Epsilon   float64            `json:"epsilon"`
 }
 
-type PolledClients struct{
+type PolledClients struct {
 	ClientID string `json:"clientID"`
 }
 
 type SmartContract struct {
-    contractapi.Contract
+	contractapi.Contract
+}
+
+func addMatricesFloat64(a, b interface{}) (interface{}, error) {
+    va := reflect.ValueOf(a)
+    vb := reflect.ValueOf(b)
+
+    // Ensure both matrices have the same type and dimensionality
+    if va.Type() != vb.Type() || va.Kind() != reflect.Slice || vb.Kind() != reflect.Slice {
+        return nil, fmt.Errorf("matrices must have the same type and dimensionality")
+    }
+
+    // Recursively add elements using direct float64 operations
+    result := reflect.MakeSlice(va.Type(), va.Len(), va.Len())
+    for i := 0; i < va.Len(); i++ {
+        result.Index(i).Set(addValuesFloat64(va.Index(i), vb.Index(i)))
+    }
+
+    return result.Interface(), nil
+}
+
+func addValuesFloat64(a, b reflect.Value) (reflect.Value) {
+    if a.Kind() == reflect.Slice {
+        // Recursively add elements for nested slices
+        resultInterface, err := addMatricesFloat64(a.Interface(), b.Interface())
+        if err != nil {
+            return reflect.Value{}
+        }
+        return reflect.ValueOf(resultInterface)
+    } else {
+        // Convert values to the common numeric type and add them
+        return reflect.ValueOf(a.Float() + b.Float())
+    }
+}
+
+func divideMatricesFloat64(a interface{}, b float64) (interface{}, error) {
+
+	va := reflect.ValueOf(a)
+
+	if va.Kind() != reflect.Slice {
+		return nil, fmt.Errorf("matrix must be a slice")
+	}
+
+	result := reflect.MakeSlice(va.Type(), va.Len(), va.Len())
+	for i := 0; i < va.Len(); i++ {
+		result.Index(i).Set(divideValuesFloat64(va.Index(i), b))
+	}
+
+	return result.Interface(), nil
+}
+
+func divideValuesFloat64(a reflect.Value, b float64) reflect.Value {
+	if a.Kind() == reflect.Slice {
+		resultInterface, err := divideMatricesFloat64(a.Interface(), b)
+		if err != nil {
+			return reflect.Value{}
+		}
+		return reflect.ValueOf(resultInterface)
+	} else {
+		return reflect.ValueOf(a.Float() / b)
+	}
+}
+
+func getFirstDimensionLength(matrix interface{}) int {
+    value := reflect.ValueOf(matrix)
+
+    if value.Kind() != reflect.Slice {
+        return 0
+    }
+    return value.Len()
 }
 
 func GetCNFromClientID(clientID string) (string, error) {
-	
-	decodedBytes, err:= base64.StdEncoding.DecodeString(clientID)
+
+	decodedBytes, err := base64.StdEncoding.DecodeString(clientID)
 	if err != nil {
 		return "", fmt.Errorf("failed to decode client ID: %v", err)
 	}
@@ -83,14 +153,14 @@ func (sc *SmartContract) InitLedger(ctx contractapi.TransactionContextInterface)
 			Layers: []Layer{
 				Layer{
 					Weights: nil,
-					Biases: nil,
+					Biases:  nil,
 				},
 			},
-		},					
-		Tokens:1,  //initially giving everyone 1 tokens
-		Round: 0,
+		},
+		Tokens:    1, //initially giving everyone 1 tokens
+		Round:     0,
 		RoundSeen: []int{},
-		Epsilon: 0,
+		Epsilon:   0,
 	}
 
 	clientDataAsBytes, err := json.Marshal(clientData)
@@ -165,7 +235,7 @@ func (sc *SmartContract) PutData(ctx contractapi.TransactionContextInterface, da
 
 	clientData.Data = newModelData
 	clientData.Round = roundNumber
-	clientData.Epsilon = epsilon;
+	clientData.Epsilon = epsilon
 
 	clientDataAsBytes, err = json.Marshal(clientData)
 	if err != nil {
@@ -196,7 +266,7 @@ func SelectSubSet(ctx contractapi.TransactionContextInterface, num int, seed int
 		if err != nil {
 			continue
 		}
-		if (len(queryResponse.Key) >= 15 && queryResponse.Key[:15] == "Polled_Clients_") || (len(queryResponse.Key) >= 9 && queryResponse.Key[:9] == "appserver") {
+		if (len(queryResponse.Key) >= 9 && queryResponse.Key[:9] == "appserver") {
 			continue
 		}
 		clientList = append(clientList, queryResponse.Key)
@@ -207,90 +277,48 @@ func SelectSubSet(ctx contractapi.TransactionContextInterface, num int, seed int
 		return clientList, nil
 	}
 
-	// select distinct random num clients
-	var selectedClients []string
-	for i := 0; i < num; i++ {
-		randIndex := rand.Intn(len(clientList))
-		selectedClients = append(selectedClients, clientList[randIndex])
-		clientList = append(clientList[:randIndex], clientList[randIndex+1:]...)
-	}
+	// shuffle the list
+	rand.Shuffle(len(clientList), func(i, j int) { clientList[i], clientList[j] = clientList[j], clientList[i] })
+
+	// select first num
+	selectedClients := clientList[:num]
 
 	return selectedClients, nil
 }
 
 // get data of random num clients
-func (sc *SmartContract) GetRoundData(ctx contractapi.TransactionContextInterface, num int, seed int) ([]NeuralNetworkModel, error) {
+func (sc *SmartContract) GetRoundData(ctx contractapi.TransactionContextInterface, num int, seed int) (NeuralNetworkModel, error) {
 
-	var round int
-	clientID, err := ctx.GetClientIdentity().GetID()
+	serverID, err := ctx.GetClientIdentity().GetID()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get client ID: %v", err)
+		return nil, fmt.Errorf("failed to get server ID: %v", err)
 	}
 
-	cn, err := GetCNFromClientID(clientID)
+	cn, err := GetCNFromClientID(serverID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get CN from client ID: %v", err)
+		return nil, fmt.Errorf("failed to get CN from server ID: %v", err)
 	}
 
-	clientDataAsBytes, err := ctx.GetStub().GetState(cn)
+	serverDataAsBytes, err := ctx.GetStub().GetState(cn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read from world state: %v", err)
 	}
 
-	var clientData ClientData
-	err = json.Unmarshal(clientDataAsBytes, &clientData)
+	var serverData ClientData
+	err = json.Unmarshal(serverDataAsBytes, &serverData)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal1 client data: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal server data: %v", err)
 	}
 
-	round = clientData.Round + 1
+	round := serverData.Round + 1
 	fmt.Printf("Round: %v\n", round)
 	selectedClients, err := SelectSubSet(ctx, num, seed)
-	//numClients:=len(selectedClients)
 	fmt.Printf("Selected clients length: %v\n", len(selectedClients))
 	if err != nil {
 		return nil, fmt.Errorf("failed to select subset: %v", err)
 	}
 
-	// serverDataAsBytes, err := ctx.GetStub().GetState(serverCN)
-	// if err != nil {
-	// 	return "", fmt.Errorf("failed to read from world state: %v", err)
-	// }
-
-	// if serverDataAsBytes == nil {
-	// 	return "", fmt.Errorf("the server data %s does not exist", serverCN)
-	// }
-
-	// var serverData ClientData
-	// err = json.Unmarshal(serverDataAsBytes, &serverData)
-	// if err != nil {
-	// 	return "", fmt.Errorf("failed to unmarshal server data: %v", err)
-	// }
-
-	var clientModelData[] NeuralNetworkModel
-	//var total_inverse_epsilon float64=0.0
-
-	for _, clientCN := range selectedClients {
-		clientDataAsBytes, err := ctx.GetStub().GetState(clientCN)
-		fmt.Printf("Currently working on client: %s\n", clientCN)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read from world state: %v", err)
-		}
-
-		var clientData ClientData
-		err = json.Unmarshal(clientDataAsBytes, &clientData)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal2 client data: %v", err)
-		}
-		//for _, roundData := range clientData.Data {
-			//if roundData.Round == round {
-			//	total_inverse_epsilon+=(1.0/clientData.Epsilon)
-			//}
-		//}
-		//if clientData.Round==round{
-		//	total_inverse_epsilon+=(1.0/clientData.Epsilon)
-		//}
-	}
+	var clientModelData []NeuralNetworkModel
 
 	for _, clientCN := range selectedClients {
 
@@ -306,44 +334,72 @@ func (sc *SmartContract) GetRoundData(ctx contractapi.TransactionContextInterfac
 			return nil, fmt.Errorf("failed to unmarshal3 client data: %v", err)
 		}
 
-		//for _, roundData := range clientData.Data {
-			//if roundData.Round == round {
-			if clientData.Round==round{
-				// clientDataList = append(clientDataList, roundData.Data)
-				clientModelData = append(clientModelData, clientData.Data)
-				// now increase tokens of the client according to epsilon
-				//clientData.Tokens = clientData.Tokens + ((1.0/clientData.Epsilon)/total_inverse_epsilon)*float64(numClients)
-				clientData.Tokens=clientData.Tokens+(clientData.Epsilon+5)/20.0
-				clientDataAsBytes, err = json.Marshal(clientData)
-				if err != nil {
-					fmt.Printf("failed to marshal client %s data: %v\n", clientCN, err)
-					continue
-				}
-				err = ctx.GetStub().PutState(clientCN, clientDataAsBytes)
-				if err != nil {
-					fmt.Printf("failed to write to world state for client %s, %v\n", clientCN, err)
-					continue
-				}
-				fmt.Printf("Client %s has %v tokens\n", clientCN, clientData.Tokens)
+		if clientData.Round == round {
+			clientModelData = append(clientModelData, clientData.Data)
+			clientData.Tokens = clientData.Tokens + (clientData.Epsilon+5)/20.0
+			clientDataAsBytes, err = json.Marshal(clientData)
+			if err != nil {
+				fmt.Printf("failed to marshal client %s data: %v\n", clientCN, err)
+				continue
 			}
-		
+			err = ctx.GetStub().PutState(clientCN, clientDataAsBytes)
+			if err != nil {
+				fmt.Printf("failed to write to world state for client %s, %v\n", clientCN, err)
+				continue
+			}
+			fmt.Printf("Client %s has %v tokens\n", clientCN, clientData.Tokens)
+		}
+
 	}
 
-	// serverData.Tokens=serverData.Tokens*(9/10.0) //server reduces its own tokens
+	if len(clientModelData) == 0 {
+		return nil, fmt.Errorf("no data for round %v", round)
+	}
 
-	// serverDataAsBytes, err = json.Marshal(serverData)
-	// if err != nil {
-	// 	return "", fmt.Errorf("failed to marshal client data: %v", err)
-	// }
+	avgLayerWeights:= clientModelData[0]
 
-	// err = ctx.GetStub().PutState(serverCN, serverDataAsBytes)
-	// if err != nil {
-	// 	return "", fmt.Errorf("failed to write to world state: %v", err)
-	// }
+	firstDim := getFirstDimensionLength(avgLayerWeights.Layers)
 
-	return clientModelData, nil
+	for ind, clientModel := range clientModelData {
+		if ind == 0 {
+			continue
+		}
+		for i := 0; i < firstDim; i++ {
+			avgLayerWeights.Layers[i].Weights, err = addMatricesFloat64(avgLayerWeights.Layers[i].Weights, clientModel.Layers[i].Weights)
+			if err != nil {
+				return nil, fmt.Errorf("failed to add matrices: %v", err)
+			}
+			avgLayerWeights.Layers[i].Biases, err = addMatricesFloat64(avgLayerWeights.Layers[i].Biases, clientModel.Layers[i].Biases)
+			if err != nil {
+				return nil, fmt.Errorf("failed to add matrices: %v", err)
+			}
+		}
+	}
+
+	for i := 0; i < firstDim; i++ {
+		avgLayerWeights.Layers[i].Weights, err = divideMatricesFloat64(avgLayerWeights.Layers[i].Weights, float64(len(clientModelData)))
+		if err != nil {
+			return nil, fmt.Errorf("failed to divide matrices: %v", err)
+		}
+		avgLayerWeights.Layers[i].Biases, err = divideMatricesFloat64(avgLayerWeights.Layers[i].Biases, float64(len(clientModelData)))
+		if err != nil {
+			return nil, fmt.Errorf("failed to divide matrices: %v", err)
+		}
+	}
+
+	serverData.Round = round
+	serverData.Data = avgLayerWeights
+	serverDataAsBytes, err = json.Marshal(serverData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal server data: %v", err)
+	}
+	err = ctx.GetStub().PutState(cn, serverDataAsBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write to world state: %v", err)
+	}
+
+	return avgLayerWeights, nil
 }
-
 
 func getData(ctx contractapi.TransactionContextInterface, clientID string) (ClientData, error) {
 	cn, err := GetCNFromClientID(clientID)
@@ -378,15 +434,14 @@ func (sc *SmartContract) GetData(ctx contractapi.TransactionContextInterface) (C
 	return getData(ctx, clientID)
 }
 
-
 // get the data pushed by the server
-func (sc *SmartContract) GetResult(ctx contractapi.TransactionContextInterface, serverCN string, round int) (NeuralNetworkModel, error) {
+func (sc *SmartContract) GetResult(ctx contractapi.TransactionContextInterface, round int) (NeuralNetworkModel, error) {
 
-	defaultReturn:= NeuralNetworkModel{
-        Layers: []Layer{}, // Initializing with an empty int array
-        // Other field initializations...
-    }
-	
+	serverCN := "appserver"
+	defaultReturn := NeuralNetworkModel{
+		Layers: []Layer{},
+	}
+
 	clientID, err := ctx.GetClientIdentity().GetID()
 	if err != nil {
 		return defaultReturn, fmt.Errorf("failed to get client ID: %v", err)
@@ -396,7 +451,7 @@ func (sc *SmartContract) GetResult(ctx contractapi.TransactionContextInterface, 
 	if err != nil {
 		return defaultReturn, fmt.Errorf("failed to get client data: %v", err)
 	}
-	
+
 	clientCN, err := GetCNFromClientID(clientID)
 	if err != nil {
 		return defaultReturn, fmt.Errorf("failed to get CN from client ID: %v", err)
@@ -417,19 +472,6 @@ func (sc *SmartContract) GetResult(ctx contractapi.TransactionContextInterface, 
 		return defaultReturn, fmt.Errorf("failed to unmarshal server data: %v", err)
 	}
 
-	//var serverRoundData NeuralNetworkModel
-	 //for _, roundData := range serverData.Data {
-	//if serverData.Round==round{
-		//serverRoundData=serverData.Data
-		//fmt.Printf("Round: %v, Data: %s\n", round, serverRoundData.Layers[0].Weights)
-		// if roundData.Round == round {
-		// 	serverRoundData = roundData
-		// }
-		// if serverRoundData.Round == round {
-		// 	serverRoundData = roundData
-		//}
-	//}
-
 	if serverData.Round == 0 {
 		return defaultReturn, fmt.Errorf("server %s has no data for round %v", serverCN, round)
 	}
@@ -442,14 +484,10 @@ func (sc *SmartContract) GetResult(ctx contractapi.TransactionContextInterface, 
 		}
 	}
 
-	if clientData.Tokens <1 {
+	if clientData.Tokens < 1 {
 		fmt.Printf("Client %s does not have sufficient tokens\n", clientCN)
 		return defaultReturn, nil
 	}
-
-	//check how many tokens the server has remaining, and calculate the cost of the client
-	// var tokens_remaining float=serverData.Tokens
-	// var cost float=tokens_remaining*(1/9.0)*(1/3.0)
 
 	clientData.RoundSeen = append(clientData.RoundSeen, round)
 	clientData.Tokens = clientData.Tokens - 1 //consuming tokens from client
@@ -465,23 +503,11 @@ func (sc *SmartContract) GetResult(ctx contractapi.TransactionContextInterface, 
 		return defaultReturn, fmt.Errorf("failed to write to world state: %v", err)
 	}
 
-	// serverData.Tokens = serverData.Tokens + cost //returning tokens to server
-
-	// serverDataAsBytes, err = json.Marshal(serverData)
-	// if err != nil {
-	// 	return "", fmt.Errorf("failed to marshal client data: %v", err)
-	// }
-
-	// err = ctx.GetStub().PutState(serverCN, serverDataAsBytes)
-	// if err != nil {
-	// 	return "", fmt.Errorf("failed to write to world state: %v", err)
-	// }
-
 	return serverData.Data, nil
 }
 
 func main() {
-	
+
 	chaincode, err := contractapi.NewChaincode(new(SmartContract))
 
 	if err != nil {

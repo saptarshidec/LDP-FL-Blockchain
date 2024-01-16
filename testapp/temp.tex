@@ -1,0 +1,18 @@
+\begin{algorithm}[h]
+    \caption{Pseudocode of chaincode invoked by server}\label{alg:server}
+    \begin{algorithmic}[1]
+    \Function{GetRoundData}{num int, seed}
+    \State $\text{clientList} \gets \text{getClientsWithRound}(round)$
+    \State $\text{clientList} \gets \text{shuffle}(clientList, seed)$
+    \State $\text{clientList} \gets \text{clientList}[:num]$
+    \State $mu_u \gets \text{getParameters}(clientList)$
+    \State $aggregate \gets \textbf{0}$
+    \For{$\mu_u[i]$ in $\mu_u$}
+    \State $aggregate \gets aggregate + \mu_u[i]$
+    \EndFor
+    \State $\mu_{fed} \gets \frac{sum}{num}$
+    \State $\text{issueTokens}(\text{clientList})$
+    \State $\text{putParameters}(\mu_{fed})$
+    \EndFunction
+    \end{algorithmic}
+\end{algorithm}

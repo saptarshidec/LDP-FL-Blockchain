@@ -6,16 +6,16 @@ const tf = require('@tensorflow/tfjs-node');
 const mnist = require('mnist');
 const { randomInt } = require('crypto');
 
-let contract=[null, null, null, null,null, null, null, null]
-let gateways=[null, null, null, null,null, null, null, null]
-let nclients=8
+let contract=[null, null, null, null]
+let gateways=[null, null, null, null]
+let nclients=4
 let nepochs=10
-let epsilonArray=[8, 8, 8, 8,8,8,8,8]
-let userNames = ["appserver", "appuser1", "appuser2", "appuser3","appuser4","appuser5","appuser6","appuser7"]
-let models = [null, null, null, null,null, null, null, null]
-let images_per_digit=100
-let test_images_per_digit=20
-let dataseed = [0, 0, 0, 0,0, 0, 0, 0]
+let epsilonArray=[8, 8, 8, 8]
+let userNames = ["appserver", "appuser1", "appuser2", "appuser3"]
+let models = [null, null, null, null]
+let images_per_digit=75
+let test_images_per_digit=15
+let dataseed = [0, 0, 0, 0]
 const initialWeight=0.05
 
 
@@ -87,7 +87,7 @@ const initClients = async() =>{
     const orgName="org1"
     try{
         const chainCode = "rounds3";
-        const ccpPath = path.resolve(`../test-network/organizations/peerOrganizations/${orgName}.example.com/connection-${orgName}.json`);
+        const ccpPath = path.resolve(`../../test-network/organizations/peerOrganizations/${orgName}.example.com/connection-${orgName}.json`);
         const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
 
         const caInfo = ccp.certificateAuthorities[`ca.${orgName}.example.com`];
@@ -285,53 +285,7 @@ const getRoundWeights = async(clientInd) => {
         const seed = randomInt(1000);
         const transaction = contract[clientInd].createTransaction('GetRoundData');
         transaction.setEndorsingOrganizations('Org1MSP', 'Org2MSP');
-        const result = await transaction.submit(num, seed);
-        //console.log("Result=",result)
-        const weightsArray = JSON.parse(result.toString());
-
-        //console.log("Weights array=",weightsArray)
-        if(weightsArray.length == 0){
-            console.log("No weights received");
-            return;
-        }
-        num = weightsArray.length;
-        let layerAvgWeight = [tf.zeros([3, 3, 1, 16]), tf.zeros([3, 3, 1, 32]), tf.zeros([800, 128]), tf.zeros([128, 10])];
-        let layerAvgBias = [tf.zeros([16]), tf.zeros([32]), tf.zeros([128]), tf.zeros([10])];
-
-        weightsArray.forEach((layer, index) => {
-            const weights=layer.layers;
-            for(let i=0; i<4; i++){
-                layerAvgWeight[i] = tf.add(layerAvgWeight[i], tf.tensor(weights[i].weights));
-                layerAvgBias[i] = tf.add(layerAvgBias[i], tf.tensor(weights[i].biases));
-            }
-        })
-
-        for(let i=0; i<4; i++){
-            layerAvgWeight[i] = tf.div(layerAvgWeight[i], num);
-            layerAvgBias[i] = tf.div(layerAvgBias[i], num);
-        }
-        const modelData = {
-            "layers":[
-                {
-                    "weights": layerAvgWeight[0].arraySync(),
-                    "biases": layerAvgBias[0].arraySync()
-                },
-                {
-                    "weights": layerAvgWeight[1].arraySync(),
-                    "biases": layerAvgBias[1].arraySync()
-                },
-                {
-                    "weights": layerAvgWeight[2].arraySync(),
-                    "biases": layerAvgBias[2].arraySync()
-                },
-                {
-                    "weights": layerAvgWeight[3].arraySync(),
-                    "biases": layerAvgBias[3].arraySync()
-                }
-            ]
-        }
-	//console.log("Model data=",modelData)
-        await contract[clientInd].submitTransaction('PutData', JSON.stringify(modelData), "appserver", epsilonArray[clientInd]);
+        await transaction.submit(num, seed);
         console.log("Client "+clientInd+" received weights and sent back");
     }
     catch(error){
@@ -438,7 +392,7 @@ const simulFunc = async()=>{
 
         for(let round=1; round<=25; round++){
             for(let i=1;i<nclients;++i){
-                epsilonArray[i]=getRandomEpsilon(5, 15);
+                // epsilonArray[i]=getRandomEpsilon(5, 15);
                 console.log("Client ",i," epsilon=",epsilonArray[i]);
             }
             for(let i=1;i<nclients;++i){
