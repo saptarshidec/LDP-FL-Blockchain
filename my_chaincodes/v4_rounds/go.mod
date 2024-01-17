@@ -1,11 +1,8 @@
 module github.com/likhnic/fabric-samples/test-network/my_chaincodes/v4_rounds
 
-go 1.21
+go 1.21.0
 
-require (
-	github.com/hyperledger/fabric-contract-api-go v1.2.2
-	gonum.org/v1/gonum v0.14.0
-)
+require github.com/hyperledger/fabric-contract-api-go v1.2.2
 
 require (
 	github.com/go-openapi/jsonpointer v0.20.0 // indirect

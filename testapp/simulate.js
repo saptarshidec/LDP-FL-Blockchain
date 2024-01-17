@@ -243,7 +243,6 @@ const weights_ldp = async(clientInd) =>{
 const trainModelAndPushWeights = async(clientInd) =>{
 
     try{
-        const cn = "appserver"
         var weights = await calculateWeights(clientInd);
         weights = await weights_ldp(clientInd);
 
@@ -269,7 +268,7 @@ const trainModelAndPushWeights = async(clientInd) =>{
         }
 
         const modelDataString = JSON.stringify(modelData);
-        await contract[clientInd].submitTransaction('PutData', modelDataString, cn, epsilonArray[clientInd]);
+        await contract[clientInd].submitTransaction('PutData', modelDataString, epsilonArray[clientInd]);
 
         console.log("Client "+clientInd+" trained and sent weights");
     }
@@ -296,41 +295,26 @@ const getRoundWeights = async(clientInd) => {
 const fetchGlobalWeights = async(clientInd, round) => {
 
     try{
-        const cn = "appserver"
         const transaction = contract[clientInd].createTransaction('GetResult');
         transaction.setEndorsingOrganizations('Org1MSP', 'Org2MSP');
-        const result = await transaction.submit(cn, round);
+        const result = await transaction.submit(round);
         var weightsArray = JSON.parse(result.toString()).layers;
-	//console.log("Weights fetched by client ",cn," = ",result);
-	//console.log("result for client",clientInd," = ",result)
-	//if(weightsArray.length==0){
-		//models[clientInd].setWeights([
-            	//tf.zeros([3, 3, 1, 16]),
-            	//tf.zeros([16]),
-            	//tf.zeros([3, 3, 1, 32]),
-            	//tf.zeros([32]),
-           	//tf.zeros([800, 128]),
-            	//tf.zeros([128]),
-            	//tf.zeros([128, 10]),
-            	//tf.zeros([10])
-        	//])
-        //}
         if(weightsArray.length>0){
-        models[clientInd].setWeights([
-            tf.tensor4d(weightsArray[0].weights),
-            tf.tensor1d(weightsArray[0].biases),
-            tf.tensor4d(weightsArray[1].weights),
-            tf.tensor1d(weightsArray[1].biases),
-            tf.tensor2d(weightsArray[2].weights),
-            tf.tensor1d(weightsArray[2].biases),
-            tf.tensor2d(weightsArray[3].weights),
-            tf.tensor1d(weightsArray[3].biases)
-        ])
-        console.log("Client "+clientInd+" received global weights");
+            models[clientInd].setWeights([
+                tf.tensor4d(weightsArray[0].weights),
+                tf.tensor1d(weightsArray[0].biases),
+                tf.tensor4d(weightsArray[1].weights),
+                tf.tensor1d(weightsArray[1].biases),
+                tf.tensor2d(weightsArray[2].weights),
+                tf.tensor1d(weightsArray[2].biases),
+                tf.tensor2d(weightsArray[3].weights),
+                tf.tensor1d(weightsArray[3].biases)
+            ])
+            console.log("Client "+clientInd+" received global weights");
         }
-	else{
-		console.log("Client "+clientInd+" doesnt have sufficient tokens");
-	}
+        else{
+            console.log("Client "+clientInd+" doesnt have sufficient tokens");
+        }
     }
     catch(error){
         console.log("FetchGlobalWeights "+"Client ID: "+clientInd+" "+error);

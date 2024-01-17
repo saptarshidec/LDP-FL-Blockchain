@@ -8,7 +8,7 @@ case "$1" in
                 ;;
             "up")
                 ./network.sh up createChannel -ca
-                ./network.sh deployCC -ccn rounds3 -ccp ./my_chaincodes/v4_rounds -ccl go
+                ./network.sh deployCC -ccn rounds3 -ccp ./my_chaincodes/v5_rounds -ccl go
                 ;;
             *)
                 echo "Invalid subcommand for network: $2"
