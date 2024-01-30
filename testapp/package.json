@@ -11,13 +11,16 @@
   "license": "ISC",
   "dependencies": {
     "@tensorflow/tfjs-node": "^4.12.0",
+    "cifar10": "^1.0.2",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "expressjs": "^1.0.1",
     "fabric-ca-client": "^2.2.18",
     "fabric-network": "^2.2.18",
+    "fashion-mnist": "^1.1.0",
     "mnist": "^1.1.0",
     "mnist_dl": "^1.0.0",
-    "object-hash": "^3.0.0"
+    "object-hash": "^3.0.0",
+    "tfjs-cifar10": "^1.1.1"
   }
 }

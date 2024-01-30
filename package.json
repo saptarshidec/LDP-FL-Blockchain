@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "cifar-10": "^0.0.6",
+    "fashion-mnist": "^1.1.0"
+  }
+}

@@ -624,7 +624,7 @@ func (sc *SmartContract) GetResult(ctx contractapi.TransactionContextInterface, 
 
 	if currentData.Tokens < 1 {
 		fmt.Printf("Client %s has no tokens\n", clientCN)
-		return NeuralNetworkModel{}, fmt.Errorf("client has no tokens")
+		return NeuralNetworkModel{ Layers: []Layer{{ Weights: nil, Biases: nil}}}, nil
 	}
 
 	currentData.RoundSeen = append(currentData.RoundSeen, round)

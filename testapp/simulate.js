@@ -5,26 +5,113 @@ const path = require('path')
 const tf = require('@tensorflow/tfjs-node');
 const mnist = require('mnist');
 const { randomInt } = require('crypto');
+const cifar10 = require('cifar10')({ dataPath: './data' })
+const fashionmnist = require('fashion-mnist');
 
-let contract=[null, null, null, null]
-let gateways=[null, null, null, null]
-let nclients=4
-let nepochs=10
-let epsilonArray=[8, 8, 8, 8]
-let userNames = ["appserver", "appuser1", "appuser2", "appuser3"]
-let models = [null, null, null, null]
-let images_per_digit=75
-let test_images_per_digit=15
-let dataseed = [0, 0, 0, 0]
-const initialWeight=0.05
+let userNames = ["appserver", "appuser1", "appuser2", "appuser3", "appuser4", "appuser5", "appuser6", "appuser7", "appuser8", "appuser9", "appuser10"]
+let contract = [null, null, null, null, null, null, null, null, null, null, null]
+let gateways = [null, null, null, null, null, null, null, null, null, null, null]
+let models = [null, null, null, null, null, null, null, null, null, null, null]
+let epsilonArray = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]
+let dataseed = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
+let nclients = 4
+let nepochs = 10
+let images_per_class = 15
+let test_images_per_class = 15
+const initialWeight = 0.05
 
+function LDP_FL(weight, c = 0.0, r = 0.075, eps = 1) {
 
-const initModels = () => {
-    for(let i=1; i<nclients; i++){
-        models[i] = tf.sequential();
+    var rand_val = Math.random();
 
-        models[i].add(tf.layers.conv2d({
+    if (weight > 0.15) {
+        weight = 0.15
+    }
+    else if (weight < -0.15) {
+        weight = -0.15
+    }
+    var boundary = (r * (Math.exp(eps) + 1) + (weight - c) * (Math.exp(eps) - 1)) / (2 * r * (Math.exp(eps) + 1));
+
+    if (rand_val <= boundary) {
+        return c + r * ((Math.exp(eps) + 1) / (Math.exp(eps) - 1));
+    }
+    else {
+        return c - r * ((Math.exp(eps) + 1) / (Math.exp(eps) - 1));
+    }
+}
+
+function perturbWeights(weightTensor, c = 0, r = 0.15, eps = 1) {
+    const weightValues = weightTensor.dataSync();
+    const processedWeightValues = weightValues.map(val => LDP_FL(val, c, r, eps));
+    const newWeightTensor = tf.tensor(processedWeightValues, weightTensor.shape);
+    return newWeightTensor;
+}
+
+class DatasetModel {
+    constructor(seed = 0, epsilon = 0, nepochs = 0) {
+        this.model = null;
+        this.dataset = null;
+        this.testset = null;
+        this.seed = seed;
+        this.epsilon = epsilon;
+        this.nepochs = nepochs;
+    }
+
+    async initModel() { }
+
+    async preprocessDataset() { }
+
+    async trainModelAndPerturbWeights() { }
+
+    async testModel() { }
+
+    async setWeights(weights) { }
+
+    async weights_ldp() {
+        let perturbedWeightsArray = tf.tidy(() => {
+            let perturbedWeightsArray = [];
+            for (const layer of this.model.layers) {
+                const weights = layer.getWeights();
+                for (const weight of weights) {
+                    const perturbedWeight = perturbWeights(tf.clone(weight), 0, 0.15, this.epsilon);
+                    perturbedWeightsArray.push(tf.clone(perturbedWeight).arraySync());
+                }
+            }
+            return perturbedWeightsArray;
+        });
+
+        return perturbedWeightsArray;
+    }
+
+    async formatWeights() {
+        let modelData = {
+            "layers": []
+        }
+        let weights = this.model.getWeights();
+        for (let i = 0; i < weights.length; i += 2) {
+            let layer = {
+                "weights": weights[i].arraySync(),
+                "biases": weights[i + 1].arraySync()
+            }
+            modelData.layers.push(layer);
+        }
+
+        return modelData;
+    }
+}
+
+class MNISTModel extends DatasetModel {
+    constructor(seed = 0, epsilon = 0, nepochs = 0) {
+        super(seed, epsilon, nepochs);
+        this.prevModelWeights = null;
+    }
+
+    async initModel() {
+
+        this.model = tf.sequential();
+
+        this.model.add(tf.layers.conv2d({
             inputShape: [28, 28, 1], // MNIST images are 28x28 pixels and have a single channel
             filters: 16,
             kernelSize: 3,
@@ -32,60 +119,426 @@ const initModels = () => {
             kernelInitializer: 'randomNormal'
             // kernelInitializer: tf.initializers.constant({ value: initialWeight })
         }));
-    
+
         // Add a max pooling layer
-        models[i].add(tf.layers.maxPooling2d({ poolSize: [2, 2] }));
-    
+        this.model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }));
+
         // Add another 2D convolutional layer with 64 filters
-        models[i].add(tf.layers.conv2d({
+        this.model.add(tf.layers.conv2d({
             filters: 32,
             kernelSize: 3,
             activation: 'relu',
             kernelInitializer: 'randomNormal'
             // kernelInitializer: tf.initializers.constant({ value: initialWeight })
         }));
-    
+
         // Add another max pooling layer
-        models[i].add(tf.layers.maxPooling2d({ poolSize: [2, 2] }));
-    
+        this.model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }));
+
         //   Flatten the output to connect to dense layers
-        models[i].add(tf.layers.flatten());
-    
+        this.model.add(tf.layers.flatten());
+
         // Add a dense layer with 128 units and ReLU activation
-        models[i].add(tf.layers.dense({
+        this.model.add(tf.layers.dense({
             units: 128,
             activation: 'relu',
             kernelInitializer: 'randomNormal'
             // kernelInitializer: tf.initializers.constant({ value: initialWeight }) 
         }));
-    
+
         // Add the output layer with 10 units (for 10 classes) and softmax activation
-        models[i].add(tf.layers.dense({
+        this.model.add(tf.layers.dense({
             units: 10,
             activation: 'softmax',
             kernelInitializer: 'randomNormal'
             // kernelInitializer: tf.initializers.constant({ value: initialWeight }) 
         }));
-    
-        // Compile the models[i]
-        models[i].compile({
+
+        // Compile the model
+        this.model.compile({
             optimizer: 'adam',
             loss: 'categoricalCrossentropy',
             metrics: ['accuracy']
         });
 
-        console.log("Model "+i+" initialized");
-        dataseed[i] = (images_per_digit+test_images_per_digit) * i;
-        // models[i].summary();
+        console.log("Model initialized");
     }
 
-    console.log("Models initialized");
+    async preprocessDataset() {
+        this.dataset = { inputs: [], outputs: [] };
+        this.testset = { inputs: [], outputs: [] };
+        console.log("Seed: " + this.seed);
+        for (let i = 0; i < 10; ++i) {
+            let set = mnist[i].set(this.seed, this.seed + images_per_class - 1);
+            for (let j = 0; j < images_per_class; ++j) {
+                let ip = set[j].input;
+                let op = set[j].output;
+                this.dataset.inputs = this.dataset.inputs.concat(ip);
+                this.dataset.outputs = this.dataset.outputs.concat(op);
+            }
+        }
+        for (let i = 0; i < 10; ++i) {
+            let set = mnist[i].set(this.seed + images_per_class, this.seed + images_per_class + test_images_per_class - 1);
+            for (let j = 0; j < test_images_per_class; ++j) {
+                let ip = set[j].input;
+                let op = set[j].output;
+                this.testset.inputs = this.testset.inputs.concat(ip);
+                this.testset.outputs = this.testset.outputs.concat(op);
+            }
+        }
+
+        this.dataset.inputs = tf.tensor4d(this.dataset.inputs, [this.dataset.inputs.length / 784, 28, 28, 1]);
+        this.dataset.outputs = tf.tensor2d(this.dataset.outputs, [this.dataset.outputs.length / 10, 10]);
+
+        this.testset.inputs = tf.tensor4d(this.testset.inputs, [this.testset.inputs.length / 784, 28, 28, 1]);
+        this.testset.outputs = tf.tensor2d(this.testset.outputs, [this.testset.outputs.length / 10, 10]);
+    }
+
+    async trainModelAndPerturbWeights() {
+
+        await this.model.fit(this.dataset.inputs, this.dataset.outputs, {
+            epochs: nepochs,
+            verbose: 0,
+        });
+
+        return await this.weights_ldp();
+    }
+
+    async testModel() {
+
+        const predictions = this.model.predict(this.testset.inputs);
+        const predictionsArray = predictions.arraySync();
+        const yTestArray = this.testset.outputs.arraySync();
+
+        let correct = 0;
+        for (let i = 0; i < predictionsArray.length; ++i) {
+            const predictedLabel = predictionsArray[i].indexOf(Math.max(...predictionsArray[i]));
+            const actualLabel = yTestArray[i].indexOf(Math.max(...yTestArray[i]));
+            if (predictedLabel === actualLabel) {
+                correct++;
+            }
+        }
+
+        const accuracy = correct / (predictionsArray.length);
+
+        console.log("Client accuracy: " + accuracy);
+        return accuracy;
+    }
+
+    async setWeights(weights) {
+        this.model.setWeights([
+            tf.tensor4d(weights[0].weights),
+            tf.tensor1d(weights[0].biases),
+            tf.tensor4d(weights[1].weights),
+            tf.tensor1d(weights[1].biases),
+            tf.tensor2d(weights[2].weights),
+            tf.tensor1d(weights[2].biases),
+            tf.tensor2d(weights[3].weights),
+            tf.tensor1d(weights[3].biases)
+        ])
+    }
 }
 
-const initClients = async() =>{
+class CIFARModel extends DatasetModel {
+    constructor(seed = 0, epsilon = 0, nepochs = 0) {
+        super(seed, epsilon, nepochs);
+    }
 
-    const orgName="org1"
-    try{
+    async initModel() {
+
+        // this.model = tf.sequential();
+
+        // this.model.add(tf.layers.conv2d({
+        //     inputShape: [32, 32, 3], // CIFAR-10 images are 32x32 pixels and have three channels (RGB)
+        //     filters: 16,
+        //     kernelSize: 3,
+        //     activation: 'relu',
+        //     kernelInitializer: 'randomNormal'
+        // }));
+
+        // this.model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }));
+
+        // this.model.add(tf.layers.conv2d({
+        //     filters: 32,
+        //     kernelSize: 3,
+        //     activation: 'relu',
+        //     kernelInitializer: 'randomNormal'
+        // }));
+
+        // this.model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }));
+
+        // this.model.add(tf.layers.flatten());
+
+        // this.model.add(tf.layers.dense({
+        //     units: 128,
+        //     activation: 'relu',
+        //     kernelInitializer: 'randomNormal'
+        // }));
+
+        // this.model.add(tf.layers.dense({
+        //     units: 10, // Number of classes in CIFAR-10
+        //     activation: 'softmax',
+        //     kernelInitializer: 'randomNormal'
+        // }));
+
+        // this.model.compile({
+        //     optimizer: 'adam',
+        //     loss: 'categoricalCrossentropy',
+        //     metrics: ['accuracy']
+        // });
+
+        this.model = tf.sequential();
+        this.model.add(tf.layers.conv2d({
+            kernelSize: 3,
+            filters: 32,
+            activation: 'relu',
+            padding: 'same',
+            inputShape: [32, 32, 3]
+        }))
+
+        this.model.add(tf.layers.conv2d({
+            kernelSize: 3,
+            filters: 32,
+            activation: 'relu'
+        }))
+        this.model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }))
+        this.model.add(tf.layers.dropout({ rate: 0.25 }))
+
+        this.model.add(tf.layers.conv2d({
+            kernelSize: 3,
+            filters: 64,
+            activation: 'relu',
+            padding: 'same'
+        }))
+        this.model.add(tf.layers.conv2d({
+            kernelSize: 3,
+            filters: 64,
+            activation: 'relu'
+        }))
+        this.model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }))
+        this.model.add(tf.layers.dropout({ rate: 0.25 }))
+
+        this.model.add(tf.layers.flatten())
+        this.model.add(tf.layers.dense({
+            units: 512,
+            activation: 'relu'
+        }))
+        this.model.add(tf.layers.dropout({ rate: 0.5 }))
+        this.model.add(tf.layers.dense({
+            units: 10,
+            activation: 'softmax'
+        }))
+
+        this.model.compile({
+            optimizer: 'adam',
+            loss: 'categoricalCrossentropy',
+            metrics: ['accuracy']
+        });
+
+        console.log("Model initialized");
+    }
+
+    async preprocessDataset() {
+        this.dataset = { inputs: [], outputs: [] };
+        this.testset = { inputs: [], outputs: [] };
+        let training_data = await cifar10.training.get(images_per_class * 10);
+        let test_data = await cifar10.test.get(test_images_per_class * 10);
+        for (let j = 0; j < images_per_class * 10; ++j) {
+            this.dataset.inputs = this.dataset.inputs.concat(training_data[j].input);
+            this.dataset.outputs = this.dataset.outputs.concat(training_data[j].output);
+        }
+
+        for (let j = 0; j < test_images_per_class * 10; ++j) {
+            this.testset.inputs = this.testset.inputs.concat(test_data[j].input);
+            this.testset.outputs = this.testset.outputs.concat(test_data[j].output);
+        }
+
+        this.dataset.inputs = tf.tensor4d(this.dataset.inputs, [this.dataset.inputs.length / 3072, 32, 32, 3]);
+        this.dataset.outputs = tf.tensor2d(this.dataset.outputs, [this.dataset.outputs.length / 10, 10]);
+
+        this.testset.inputs = tf.tensor4d(this.testset.inputs, [this.testset.inputs.length / 3072, 32, 32, 3]);
+        this.testset.outputs = tf.tensor2d(this.testset.outputs, [this.testset.outputs.length / 10, 10]);
+    }
+
+    async trainModelAndPerturbWeights() {
+        await this.model.fit(this.dataset.inputs, this.dataset.outputs, {
+            epochs: nepochs,
+            verbose: 0,
+        })
+
+        return await this.weights_ldp();
+    }
+
+    async testModel() {
+        const predictions = this.model.predict(this.testset.inputs);
+        const predictionsArray = predictions.arraySync();
+        const yTestArray = this.testset.outputs.arraySync();
+
+        let correct = 0;
+        for (let i = 0; i < predictionsArray.length; ++i) {
+            const predictedLabel = predictionsArray[i].indexOf(Math.max(...predictionsArray[i]));
+            const actualLabel = yTestArray[i].indexOf(Math.max(...yTestArray[i]));
+            if (predictedLabel === actualLabel) {
+                correct++;
+            }
+        }
+
+        const accuracy = correct / (predictionsArray.length);
+
+        console.log("Client accuracy: " + accuracy);
+        return accuracy;
+    }
+
+    async setWeights(weights) {
+        this.model.setWeights([
+            tf.tensor4d(weights[0].weights),
+            tf.tensor1d(weights[0].biases),
+            tf.tensor4d(weights[1].weights),
+            tf.tensor1d(weights[1].biases),
+            tf.tensor2d(weights[2].weights),
+            tf.tensor1d(weights[2].biases),
+            tf.tensor2d(weights[3].weights),
+            tf.tensor1d(weights[3].biases)
+        ])
+    }
+}
+
+class FashionMNIST extends DatasetModel {
+
+    async initModel() {
+
+        this.model = tf.sequential();
+
+        this.model.add(tf.layers.conv2d({
+            inputShape: [28, 28, 1], // MNIST images are 28x28 pixels and have a single channel
+            filters: 16,
+            kernelSize: 3,
+            activation: 'relu',
+            kernelInitializer: 'randomNormal'
+            // kernelInitializer: tf.initializers.constant({ value: initialWeight })
+        }));
+
+        // Add a max pooling layer
+        this.model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }));
+
+        // Add another 2D convolutional layer with 64 filters
+        this.model.add(tf.layers.conv2d({
+            filters: 32,
+            kernelSize: 3,
+            activation: 'relu',
+            kernelInitializer: 'randomNormal'
+            // kernelInitializer: tf.initializers.constant({ value: initialWeight })
+        }));
+
+        // Add another max pooling layer
+        this.model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }));
+
+        //   Flatten the output to connect to dense layers
+        this.model.add(tf.layers.flatten());
+
+        // Add a dense layer with 128 units and ReLU activation
+        this.model.add(tf.layers.dense({
+            units: 128,
+            activation: 'relu',
+            kernelInitializer: 'randomNormal'
+            // kernelInitializer: tf.initializers.constant({ value: initialWeight }) 
+        }));
+
+        // Add the output layer with 10 units (for 10 classes) and softmax activation
+        this.model.add(tf.layers.dense({
+            units: 10,
+            activation: 'softmax',
+            kernelInitializer: 'randomNormal'
+            // kernelInitializer: tf.initializers.constant({ value: initialWeight }) 
+        }));
+
+        // Compile the model
+        this.model.compile({
+            optimizer: 'adam',
+            loss: 'categoricalCrossentropy',
+            metrics: ['accuracy']
+        });
+
+        console.log("Model initialized");
+    }
+
+    async preprocessDataset() {
+        this.dataset = { inputs: [], outputs: [] };
+        this.testset = { inputs: [], outputs: [] };
+        console.log("Seed: " + this.seed);
+        for (let i = 0; i < 10; ++i) {
+            let set = fashionmnist[i].set(this.seed, this.seed + images_per_class - 1);
+            for (let j = 0; j < images_per_class; ++j) {
+                let ip = set[j].input;
+                let op = set[j].output;
+                this.dataset.inputs = this.dataset.inputs.concat(ip);
+                this.dataset.outputs = this.dataset.outputs.concat(op);
+            }
+        }
+        for (let i = 0; i < 10; ++i) {
+            let set = fashionmnist[i].set(this.seed + images_per_class, this.seed + images_per_class + test_images_per_class - 1);
+            for (let j = 0; j < test_images_per_class; ++j) {
+                let ip = set[j].input;
+                let op = set[j].output;
+                this.testset.inputs = this.testset.inputs.concat(ip);
+                this.testset.outputs = this.testset.outputs.concat(op);
+            }
+        }
+    }
+
+    async trainModelAndPerturbWeights() {
+        const xTrain = tf.tensor4d(this.dataset.inputs, [this.dataset.inputs.length / 784, 28, 28, 1]);
+        const yTrain = tf.tensor2d(this.dataset.outputs, [this.dataset.outputs.length / 10, 10]);
+
+        await this.model.fit(xTrain, yTrain, {
+            epochs: nepochs,
+            verbose: 0,
+        });
+
+        return await this.weights_ldp();
+    }
+
+    async testModel() {
+        const xTest = tf.tensor4d(this.testset.inputs, [this.testset.inputs.length / 784, 28, 28, 1]);
+        const yTest = tf.tensor2d(this.testset.outputs, [this.testset.outputs.length / 10, 10]);
+
+        const predictions = this.model.predict(xTest);
+        const predictionsArray = predictions.arraySync();
+        const yTestArray = yTest.arraySync();
+
+        let correct = 0;
+        for (let i = 0; i < predictionsArray.length; ++i) {
+            const predictedLabel = predictionsArray[i].indexOf(Math.max(...predictionsArray[i]));
+            const actualLabel = yTestArray[i].indexOf(Math.max(...yTestArray[i]));
+            if (predictedLabel === actualLabel) {
+                correct++;
+            }
+        }
+
+        const accuracy = correct / (predictionsArray.length);
+
+        console.log("Client accuracy: " + accuracy);
+        return accuracy;
+    }
+
+    async setWeights(weights) {
+        this.model.setWeights([
+            tf.tensor4d(weights[0].weights),
+            tf.tensor1d(weights[0].biases),
+            tf.tensor4d(weights[1].weights),
+            tf.tensor1d(weights[1].biases),
+            tf.tensor2d(weights[2].weights),
+            tf.tensor1d(weights[2].biases),
+            tf.tensor2d(weights[3].weights),
+            tf.tensor1d(weights[3].biases)
+        ])
+    }
+}
+
+const initClients = async () => {
+
+    const orgName = "org1"
+    try {
         const chainCode = "rounds3";
         const ccpPath = path.resolve(`../../test-network/organizations/peerOrganizations/${orgName}.example.com/connection-${orgName}.json`);
         const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
@@ -121,7 +574,7 @@ const initClients = async() =>{
 
         const adminUser = await provider.getUserContext(adminIdentity, `admin${orgName}`);
 
-        for(let i=0; i<nclients; i++){
+        for (let i = 0; i < nclients; i++) {
             let userName = userNames[i]
             const getUser = await wallet.get(userName);
             if (!getUser) {
@@ -160,256 +613,116 @@ const initClients = async() =>{
 
             gateways[i] = gateway;
 
-            if(!getUser) await contract[i].submitTransaction('InitLedger');
-            console.log("Gateway connected for user "+userName);
+            if (!getUser) await contract[i].submitTransaction('InitLedger');
+            console.log("Gateway connected for user " + userName);
         }
     }
-    catch(error){
+    catch (error) {
         console.log(error);
     }
 }
 
-function LDP_FL(weight, c = 0.0, r = 0.075, eps = 1) {
+const trainModelAndPushWeights = async (clientInd) => {
 
-    var rand_val = Math.random();
-
-    if (weight > 0.15) {
-        weight = 0.15
-    }
-    else if (weight < -0.15) {
-        weight = -0.15
-    }
-    var boundary = (r * (Math.exp(eps) + 1) + (weight - c) * (Math.exp(eps) - 1)) / (2 * r * (Math.exp(eps) + 1));
-
-    if (rand_val <= boundary) {
-        return c + r * ((Math.exp(eps) + 1) / (Math.exp(eps) - 1));
-    }
-    else {
-        return c - r * ((Math.exp(eps) + 1) / (Math.exp(eps) - 1));
-    }
-}
-
-function perturbWeights(weightTensor, c = 0, r = 0.15, eps = 1) {
-    const weightValues = weightTensor.dataSync();
-    const processedWeightValues = weightValues.map(val => LDP_FL(val, c, r, eps));
-    const newWeightTensor = tf.tensor(processedWeightValues, weightTensor.shape);
-    weightTensor.assign(newWeightTensor);
-}
-
-const calculateWeights = async(clientInd) =>{
-
-    var inputs = []
-    var outputs = []
-
-    for(let i=0; i<10; i++){
-    	//console.log("Number of images for digit",i," = ",mnist[i].length)
-        let set=mnist[i].set(dataseed[clientInd], dataseed[clientInd]+images_per_digit-1);
-        for(let j=0; j<images_per_digit; j++){
-            let ip=set[j].input;
-            let op=set[j].output;
-            inputs = inputs.concat(ip);
-            outputs = outputs.concat(op);
-        }
-    }
-
-    const xTrain = tf.tensor4d(inputs, [inputs.length/784, 28, 28, 1]);
-    const yTrain = tf.tensor2d(outputs, [outputs.length/10, 10]);
-
-    await models[clientInd].fit(xTrain, yTrain, {
-        epochs: nepochs,
-        verbose: 0,
-    });
-
-    const weights = models[clientInd].getWeights();
-    return weights;
-}
-
-const weights_ldp = async(clientInd) =>{
-
-    let intialModelWeights = models[clientInd].getWeights();
-    tf.tidy(()=>{
-        for(const layer of models[clientInd].layers){
-            const weights = layer.getWeights();
-            for(const weight of weights){
-                perturbWeights(weight, 0, 0.15, epsilonArray[clientInd]);
-            }
-        }
-    })
-    let currModelWeights = [models[clientInd].layers[0].getWeights()[0].arraySync(), models[clientInd].layers[0].getWeights()[1].arraySync(), models[clientInd].layers[2].getWeights()[0].arraySync(), models[clientInd].layers[2].getWeights()[1].arraySync(), models[clientInd].layers[5].getWeights()[0].arraySync(), models[clientInd].layers[5].getWeights()[1].arraySync(), models[clientInd].layers[6].getWeights()[0].arraySync(), models[clientInd].layers[6].getWeights()[1].arraySync()];
-    models[clientInd].setWeights(intialModelWeights);
-    return currModelWeights;
-}
-
-const trainModelAndPushWeights = async(clientInd) =>{
-
-    try{
-        var weights = await calculateWeights(clientInd);
-        weights = await weights_ldp(clientInd);
-
-        const modelData = {
-            "layers":[
-                {
-                    "weights": weights[0],
-                    "biases": weights[1]
-                },
-                {
-                    "weights": weights[2],
-                    "biases": weights[3]
-                },
-                {
-                    "weights": weights[4],
-                    "biases": weights[5]
-                },
-                {
-                    "weights": weights[6],
-                    "biases": weights[7]
-                }
-            ]
-        }
-
+    try {
+        let modelData = await models[clientInd].trainModelAndPerturbWeights();
+        modelData = await models[clientInd].formatWeights();
         const modelDataString = JSON.stringify(modelData);
         await contract[clientInd].submitTransaction('PutData', modelDataString, epsilonArray[clientInd]);
 
-        console.log("Client "+clientInd+" trained and sent weights");
+        console.log("Client " + clientInd + " trained and sent weights");
     }
-    catch(error){
-        console.log("TrainModelAndPushWeights "+"Client ID: "+clientInd+" "+error);
+    catch (error) {
+        console.log("TrainModelAndPushWeights " + "Client ID: " + clientInd + " " + error);
     }
 }
 
-const getRoundWeights = async(clientInd) => {
+const getRoundWeights = async (clientInd) => {
 
-    try{
+    try {
         let num = nclients - 1;
         const seed = randomInt(1000);
         const transaction = contract[clientInd].createTransaction('GetRoundData');
         transaction.setEndorsingOrganizations('Org1MSP', 'Org2MSP');
         await transaction.submit(num, seed);
-        console.log("Client "+clientInd+" received weights and sent back");
+        console.log("Client " + clientInd + " received weights and sent back");
     }
-    catch(error){
-        console.log("GetRoundWeights "+"Client ID: "+clientInd+" "+error);
+    catch (error) {
+        console.log("GetRoundWeights " + "Client ID: " + clientInd + " " + error);
     }
 }
 
-const fetchGlobalWeights = async(clientInd, round) => {
+const fetchGlobalWeights = async (clientInd, round) => {
 
-    try{
+    try {
         const transaction = contract[clientInd].createTransaction('GetResult');
         transaction.setEndorsingOrganizations('Org1MSP', 'Org2MSP');
         const result = await transaction.submit(round);
         var weightsArray = JSON.parse(result.toString()).layers;
-        if(weightsArray.length>0){
-            models[clientInd].setWeights([
-                tf.tensor4d(weightsArray[0].weights),
-                tf.tensor1d(weightsArray[0].biases),
-                tf.tensor4d(weightsArray[1].weights),
-                tf.tensor1d(weightsArray[1].biases),
-                tf.tensor2d(weightsArray[2].weights),
-                tf.tensor1d(weightsArray[2].biases),
-                tf.tensor2d(weightsArray[3].weights),
-                tf.tensor1d(weightsArray[3].biases)
-            ])
-            console.log("Client "+clientInd+" received global weights");
+        if (weightsArray[0].weights) {
+            models[clientInd].setWeights(weightsArray)
+            console.log("Client " + clientInd + " received global weights");
         }
-        else{
-            console.log("Client "+clientInd+" doesnt have sufficient tokens");
+        else {
+            console.log("Client " + clientInd + " doesnt have sufficient tokens");
         }
     }
-    catch(error){
-        console.log("FetchGlobalWeights "+"Client ID: "+clientInd+" "+error);
-    }
-}
-
-const getAccuracy = async(clientInd) => {
-
-    try{
-        let inputs = []
-        let outputs = []
-
-        for(let i=0;i<10;++i){
-            let set=mnist[i].set(dataseed[clientInd]+images_per_digit, dataseed[clientInd]+images_per_digit+test_images_per_digit-1);
-            for(let j=0;j<test_images_per_digit;++j){
-                let ip=set[j].input;
-                let op=set[j].output;
-                inputs = inputs.concat(ip);
-                outputs = outputs.concat(op);
-            }
-        }
-
-        const xTest = tf.tensor4d(inputs, [inputs.length/784, 28, 28, 1]);
-        const yTest = tf.tensor2d(outputs, [outputs.length/10, 10]);
-
-        const predictions = models[clientInd].predict(xTest);
-        const predictionsArray = predictions.arraySync();
-        const yTestArray = yTest.arraySync();
-
-        let correct = 0;
-        for(let i=0;i<predictionsArray.length;++i){
-            const predictedLabel = predictionsArray[i].indexOf(Math.max(...predictionsArray[i]));
-            const actualLabel = yTestArray[i].indexOf(Math.max(...yTestArray[i]));
-            if(predictedLabel === actualLabel){
-                correct++;
-            }
-        }
-
-        const accuracy = correct / (predictionsArray.length);
-
-        console.log("Client "+clientInd+" accuracy: "+accuracy);
-        return accuracy;
-    }
-    catch(error){
-        console.log("GetAccuracy "+"Client ID: "+clientInd+" "+error);
+    catch (error) {
+        console.log("FetchGlobalWeights " + "Client ID: " + clientInd + " " + error);
     }
 }
 
 let roundAccuracies = []
 
 function getRandomEpsilon(min, max) {
-    // By multiplying and adding, we get a random integer within the desired range.
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-const simulFunc = async()=>{
+const simulFunc = async () => {
 
-    try{
+    try {
 
-        for(let round=1; round<=25; round++){
-            for(let i=1;i<nclients;++i){
+        for (let round = 1; round <= 25; round++) {
+            for (let i = 1; i < nclients; ++i) {
                 // epsilonArray[i]=getRandomEpsilon(5, 15);
-                console.log("Client ",i," epsilon=",epsilonArray[i]);
+                console.log("Client ", i, " epsilon=", epsilonArray[i]);
             }
-            for(let i=1;i<nclients;++i){
+            for (let i = 1; i < nclients; ++i) {
                 await trainModelAndPushWeights(i);
             }
-    
+
             await getRoundWeights(0);
-    		
-            for(let i=1;i<nclients;++i){
+
+            for (let i = 1; i < nclients; ++i) {
                 await fetchGlobalWeights(i, round);
             }
-    
+
             let currAcc = []
-            for(let i=1;i<nclients;++i){
-                currAcc.push(await getAccuracy(i));
+            for (let i = 1; i < nclients; ++i) {
+                currAcc.push(await models[i].testModel());
             }
-    
+
             roundAccuracies.push(currAcc);
         }
 
         console.log(roundAccuracies);
 
     }
-    catch(error){
+    catch (error) {
         console.log(error);
     }
 }
 
-const simulate = async() =>{
+const simulate = async () => {
     await initClients();
-    initModels();
+    for (let i = 1; i < nclients; ++i) {
+        dataseed[i] = (images_per_class + test_images_per_class) * i;
+        models[i] = new CIFARModel(dataseed[i], epsilonArray[i], nepochs);
+        await models[i].initModel();
+        await models[i].preprocessDataset();
+    }
     await simulFunc();
-    for(let i=0;i<nclients;++i){
+    for (let i = 0; i < nclients; ++i) {
         await gateways[i].disconnect();
     }
 }
