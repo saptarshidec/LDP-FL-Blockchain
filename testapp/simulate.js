@@ -15,9 +15,9 @@ let models = [null, null, null, null, null, null, null, null, null, null, null]
 let epsilonArray = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]
 let dataseed = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
-let nclients = 4
+let nclients = 2
 let nepochs = 10
-let images_per_class = 15
+let images_per_class = 30
 let test_images_per_class = 15
 const initialWeight = 0.05
 
@@ -244,6 +244,38 @@ class CIFARModel extends DatasetModel {
         super(seed, epsilon, nepochs);
     }
 
+    residualBlock(input, filters, kernelSize = 3, stride = 1) {
+        const conv1 = tf.layers.conv2d({
+            filters,
+            kernelSize,
+            strides: stride,
+            padding: 'same',
+            activation: 'relu',
+            kernelInitializer: 'heNormal',
+        }).apply(input);
+
+        const conv2 = tf.layers.conv2d({
+            filters,
+            kernelSize,
+            strides: 1,
+            padding: 'same',
+            activation: 'linear',
+            kernelInitializer: 'heNormal',
+        }).apply(conv1);
+
+        const shortcut = (stride === 1 && input.shape[3] === filters) ? input : tf.layers.conv2d({
+            filters,
+            kernelSize: 1,
+            strides: stride,
+            padding: 'valid',
+            activation: 'linear',
+            kernelInitializer: 'heNormal',
+        }).apply(input);
+
+        const output = tf.layers.add().apply([conv2, shortcut]);
+        return tf.layers.activation({ activation: 'relu' }).apply(output);
+    }
+
     async initModel() {
 
         // this.model = tf.sequential();
@@ -287,52 +319,82 @@ class CIFARModel extends DatasetModel {
         //     metrics: ['accuracy']
         // });
 
-        this.model = tf.sequential();
-        this.model.add(tf.layers.conv2d({
-            kernelSize: 3,
-            filters: 32,
-            activation: 'relu',
+        // this.model = tf.sequential();
+        // this.model.add(tf.layers.conv2d({
+        //     kernelSize: 3,
+        //     filters: 32,
+        //     activation: 'relu',
+        //     padding: 'same',
+        //     inputShape: [32, 32, 3]
+        // }))
+
+        // this.model.add(tf.layers.conv2d({
+        //     kernelSize: 3,
+        //     filters: 32,
+        //     activation: 'relu'
+        // }))
+        // this.model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }))
+        // this.model.add(tf.layers.dropout({ rate: 0.25 }))
+
+        // this.model.add(tf.layers.conv2d({
+        //     kernelSize: 3,
+        //     filters: 64,
+        //     activation: 'relu',
+        //     padding: 'same'
+        // }))
+        // this.model.add(tf.layers.conv2d({
+        //     kernelSize: 3,
+        //     filters: 64,
+        //     activation: 'relu'
+        // }))
+        // this.model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }))
+        // this.model.add(tf.layers.dropout({ rate: 0.25 }))
+
+        // this.model.add(tf.layers.flatten())
+        // this.model.add(tf.layers.dense({
+        //     units: 512,
+        //     activation: 'relu'
+        // }))
+        // this.model.add(tf.layers.dropout({ rate: 0.5 }))
+        // this.model.add(tf.layers.dense({
+        //     units: 10,
+        //     activation: 'softmax'
+        // }))
+
+        // this.model.compile({
+        //     optimizer: 'adam',
+        //     loss: 'categoricalCrossentropy',
+        //     metrics: ['accuracy']
+        // });
+
+
+        // ResNet model
+        const input = tf.input({ shape: [32, 32, 3] });
+        let x = tf.layers.conv2d({
+            filters: 32, 
+            kernelSize: 3, 
+            strides: 1,
             padding: 'same',
-            inputShape: [32, 32, 3]
-        }))
-
-        this.model.add(tf.layers.conv2d({
-            kernelSize: 3,
-            filters: 32,
-            activation: 'relu'
-        }))
-        this.model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }))
-        this.model.add(tf.layers.dropout({ rate: 0.25 }))
-
-        this.model.add(tf.layers.conv2d({
-            kernelSize: 3,
-            filters: 64,
             activation: 'relu',
-            padding: 'same'
-        }))
-        this.model.add(tf.layers.conv2d({
-            kernelSize: 3,
-            filters: 64,
-            activation: 'relu'
-        }))
-        this.model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }))
-        this.model.add(tf.layers.dropout({ rate: 0.25 }))
+            kernelInitializer: 'heNormal',
+        }).apply(input);
 
-        this.model.add(tf.layers.flatten())
-        this.model.add(tf.layers.dense({
-            units: 512,
-            activation: 'relu'
-        }))
-        this.model.add(tf.layers.dropout({ rate: 0.5 }))
-        this.model.add(tf.layers.dense({
-            units: 10,
-            activation: 'softmax'
-        }))
+        x = this.residualBlock(x, 32);
+        x = this.residualBlock(x, 32);
+        x = this.residualBlock(x, 64, 3, 2);
+        x = this.residualBlock(x, 64);
+        x = this.residualBlock(x, 128, 3, 2);
+        x = this.residualBlock(x, 128);
 
+        x = tf.layers.globalAveragePooling2d({ dataFormat: 'channelsLast' }).apply(x);
+        
+        const output = tf.layers.dense({ units: 10, activation: 'softmax' }).apply(x);
+
+        this.model = tf.model({ inputs: input, outputs: output });
         this.model.compile({
             optimizer: 'adam',
             loss: 'categoricalCrossentropy',
-            metrics: ['accuracy']
+            metrics: ['accuracy'],
         });
 
         console.log("Model initialized");
@@ -390,16 +452,40 @@ class CIFARModel extends DatasetModel {
     }
 
     async setWeights(weights) {
-        this.model.setWeights([
-            tf.tensor4d(weights[0].weights),
-            tf.tensor1d(weights[0].biases),
-            tf.tensor4d(weights[1].weights),
-            tf.tensor1d(weights[1].biases),
-            tf.tensor2d(weights[2].weights),
-            tf.tensor1d(weights[2].biases),
-            tf.tensor2d(weights[3].weights),
-            tf.tensor1d(weights[3].biases)
-        ])
+        // this.model.setWeights([
+        //     tf.tensor4d(weights[0].weights),
+        //     tf.tensor1d(weights[0].biases),
+        //     tf.tensor4d(weights[1].weights),
+        //     tf.tensor1d(weights[1].biases),
+        //     tf.tensor2d(weights[2].weights),
+        //     tf.tensor1d(weights[2].biases),
+        //     tf.tensor2d(weights[3].weights),
+        //     tf.tensor1d(weights[3].biases)
+        // ])
+
+        // this.model.setWeights([
+        //     tf.tensor4d(weights[0].weights),
+        //     tf.tensor1d(weights[0].biases),
+        //     tf.tensor4d(weights[1].weights),
+        //     tf.tensor1d(weights[1].biases),
+        //     tf.tensor4d(weights[2].weights),
+        //     tf.tensor1d(weights[2].biases),
+        //     tf.tensor4d(weights[3].weights),
+        //     tf.tensor1d(weights[3].biases),
+        //     tf.tensor4d(weights[4].weights),
+        //     tf.tensor1d(weights[4].biases),
+        //     tf.tensor4d(weights[5].weights),
+        //     tf.tensor1d(weights[5].biases),
+        //     tf.tensor4d(weights[6].weights),
+        //     tf.tensor1d(weights[6].biases),
+        //     tf.tensor2d(weights[7].weights),
+        //     tf.tensor1d(weights[7].biases),
+        //   ]);
+        for(let i=0;i<weights.length;i++){
+            console.log(weights[i].weights.length);
+        }
+        // console.log(weights[0].weights.length);
+          
     }
 }
 

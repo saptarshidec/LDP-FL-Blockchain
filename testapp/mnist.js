@@ -5,16 +5,20 @@ const fashionmnist = require('fashion-mnist');
 
 const main = async() => {
 
-    var cloth = mnist[0].get(); // single cloth
-    console.log(cloth);
-    cloth = mnist[1].range(0, 100)[50]; // extracting the cloth from a range
-    console.log(cloth)
-    cloth = mnist[4].set(0, 100)[20].input; // extracting the cloth from a dataset
-    console.log(cloth)
-    cloth = mnist.set(8000, 2000).training[0].input; // extracting the cloth from a training set
-    console.log(cloth)
-    cloth = mnist.set(8000, 2000).test[15].input; // extracting the cloth from a test set
-    console.log(cloth)
+    // var cloth = mnist[0].get(); // single cloth
+    // console.log(cloth);
+    // cloth = mnist[1].range(0, 100)[50]; // extracting the cloth from a range
+    // console.log(cloth)
+    // cloth = mnist[4].set(0, 100)[20].input; // extracting the cloth from a dataset
+    // console.log(cloth)
+    // cloth = mnist.set(8000, 2000).training[0].input; // extracting the cloth from a training set
+    // console.log(cloth)
+    // cloth = mnist.set(8000, 2000).test[15].input; // extracting the cloth from a test set
+    // console.log(cloth)
+
+    cifar10.set(400, 200)
+    let train=await cifar10.training.get(1000)
+    console.log(train.length)
 }
 
 main();
