@@ -1,60 +1,57 @@
-[
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0,
-  ... 684 more items
-]
-[
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0,
-  ... 684 more items
-]
-[
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0,
-  ... 684 more items
-]
-[
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0,
-  ... 684 more items
-]
-[
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0,
-  ... 684 more items
-]
+Successfully enrolled admin user adminorg1 and imported it into the wallet
+An identity for the user appserver already exists in the wallet
+Gateway connected for user appserver
+Successfully enrolled admin user adminorg2 and imported it into the wallet
+An identity for the user appuser1 already exists in the wallet
+Gateway connected for user appuser1
+Successfully enrolled admin user adminorg3 and imported it into the wallet
+An identity for the user appuser2 already exists in the wallet
+Gateway connected for user appuser2
+Successfully enrolled admin user adminorg4 and imported it into the wallet
+An identity for the user appuser3 already exists in the wallet
+Gateway connected for user appuser3
+Successfully enrolled admin user adminorg2 and imported it into the wallet
+An identity for the user appuser4 already exists in the wallet
+Gateway connected for user appuser4
+Model initialized
+Seed: 45
+Model initialized
+Seed: 90
+Model initialized
+Seed: 135
+Model initialized
+Seed: 180
+Client 1 trained and sent weights
+Client 2 trained and sent weights
+Client 3 trained and sent weights
+Client 4 trained and sent weights
+Transaction: GetAllParams
+Received weights from clients and averaged
+Client 1 requested key for round 1
+Client 0 received weights and sent back
+Client 2 requested key for round 1
+Client 3 requested key for round 1
+Client 4 requested key for round 1
+Received requests from clients {"round":[1,1,1],"orgName":["Org2MSP","Org3MSP","Org4MSP"]}
+Transient data {
+  password: <Buffer 30 33 62 66 32 62 30 39 65 39 64 32 63 31 65 38 35 65 39 64 33 65 38 64 66 66 34 64 36 62 66 30 31 31 33 30 36 32 35 31 66 36 32 33 37 38 36 32>,
+  iv: <Buffer 37 32 63 61 33 66 63 32 61 62 34 36 64 31 34 37 63 37 30 38 35 31 34 62 66 35 31 30 39 32 66 65>
+}
+Sent symmetric key to client for round 1
+Transient data {
+  password: <Buffer 30 33 62 66 32 62 30 39 65 39 64 32 63 31 65 38 35 65 39 64 33 65 38 64 66 66 34 64 36 62 66 30 31 31 33 30 36 32 35 31 66 36 32 33 37 38 36 32>,
+  iv: <Buffer 37 32 63 61 33 66 63 32 61 62 34 36 64 31 34 37 63 37 30 38 35 31 34 62 66 35 31 30 39 32 66 65>
+}
+Sent symmetric key to client for round 1
+Transient data {
+  password: <Buffer 30 33 62 66 32 62 30 39 65 39 64 32 63 31 65 38 35 65 39 64 33 65 38 64 66 66 34 64 36 62 66 30 31 31 33 30 36 32 35 31 66 36 32 33 37 38 36 32>,
+  iv: <Buffer 37 32 63 61 33 66 63 32 61 62 34 36 64 31 34 37 63 37 30 38 35 31 34 62 66 35 31 30 39 32 66 65>
+}
+Sent symmetric key to client for round 1
+Received encrypted weights for client 1 for round 1
+Encrypted params 
+Received symmetric key from client 1 for round 1
+Key iv, password 72ca3fc2ab46d147c708514bf51092fe 03bf2b09e9d2c1e85e9d3e8dff4d6bf011306251f6237862
+72ca3fc2ab46d147c708514bf51092fe 03bf2b09e9d2c1e85e9d3e8dff4d6bf011306251f6237862
+Key iv, password <Buffer 72 ca 3f c2 ab 46 d1 47 c7 08 51 4b f5 10 92 fe> <Buffer 03 bf 2b 09 e9 d2 c1 e8 5e 9d 3e 8d ff 4d 6b f0 11 30 62 51 f6 23 78 62>
+SimulateFL Error: error:1C80006B:Provider routines::wrong final block length

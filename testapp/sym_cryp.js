@@ -2,7 +2,7 @@ const crypto = require('crypto');
 
 const algorithm = 'aes-192-cbc';
 const password = 'password';
-const text_to_encrypt = 'Hello, world!';
+const text_to_encrypt = [[1, 2], [3, 4]]
 
 const key = crypto.scryptSync(password, 'salt', 24);
 const iv = crypto.randomBytes(16);
@@ -20,9 +20,8 @@ cipher.on('end', () => {
     console.log(encrypted);
 });
 
-cipher.write(text_to_encrypt);
+cipher.write(JSON.stringify(text_to_encrypt));
 cipher.end();
-
 // Decryption
 const decipher = crypto.createDecipheriv(algorithm, key, iv);
 
@@ -35,8 +34,8 @@ decipher.on('readable', () => {
 
 decipher.on('end', () => {
     console.log(decrypted);
+    console.log(JSON.parse(decrypted));
 });
-
 
 decipher.write(encrypted, 'hex');
 decipher.end();

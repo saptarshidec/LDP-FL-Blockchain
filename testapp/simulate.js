@@ -4,18 +4,25 @@ const fs = require('fs')
 const path = require('path')
 const tf = require('@tensorflow/tfjs-node');
 const mnist = require('mnist');
-const { randomInt } = require('crypto');
 const cifar10 = require('cifar10')({ dataPath: './data' })
 const fashionmnist = require('fashion-mnist');
+const { randomInt } = require('crypto');
+const crypto = require('crypto');
+
 
 let userNames = ["appserver", "appuser1", "appuser2", "appuser3", "appuser4", "appuser5", "appuser6", "appuser7", "appuser8", "appuser9", "appuser10"]
+let privateDataCollection = [null, null, null, null, null, null, null, null, null, null, null]
 let contract = [null, null, null, null, null, null, null, null, null, null, null]
 let gateways = [null, null, null, null, null, null, null, null, null, null, null]
 let models = [null, null, null, null, null, null, null, null, null, null, null]
 let epsilonArray = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]
 let dataseed = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
-let nclients = 2
+const algorithm = 'aes-192-cbc';
+const passwords = []
+const ivs = []
+
+let nclients = 4
 let nepochs = 10
 let images_per_class = 30
 let test_images_per_class = 15
@@ -597,12 +604,125 @@ const getRoundWeights = async (clientInd) => {
         const seed = randomInt(1000);
         const transaction = contract[clientInd].createTransaction('GetRoundData');
         transaction.setEndorsingOrganizations('Org1MSP', 'Org2MSP');
-        await transaction.submit(num, seed);
+        const clientWeights = await transaction.submit(num, seed);
+        clientWeights = JSON.parse(clientWeights.toString());
+
+        let avgWeights = []
+        let avgBias = []
+        for(let i=0;i<clientWeights[0].layers.length;i++){
+            avgWeights.push(clientWeights[0].layers[i].weights);
+            avgBias.push(clientWeights[0].layers[i].biases);
+        }
+
+        clientWeights.forEach((layer, index)=>{
+            const weight = layer.layers
+            if(index === 0){
+                return
+            }
+            for(let i=0; i<weight.length; i++){
+                avgWeights[i] = tf.add(avgWeights[i], weight[i].weights)
+                avgBias[i] = tf.add(avgBias[i], weight[i].biases)
+            }
+        })
+
+        for(let i=0; i<avgWeights.length; i++){
+            avgWeights[i] = tf.div(avgWeights[i], num)
+            avgBias[i] = tf.div(avgBias[i], num)
+        }
+
+        const modelData = {
+            "layers": []
+        }
+
+        for(let i=0; i<avgWeights.length; i++){
+            let layer = {
+                "weights": avgWeights[i].arraySync(),
+                "biases": avgBias[i].arraySync()
+            }
+            modelData.layers.push(layer);
+        }
+
+        const password = crypto.randomBytes(16).toString('hex');
+        passwords.push(password);
+
+        const iv = crypto.randomBytes(16);
+        ivs.push(iv);
+
+        const key = crypto.scryptSync(password, 'salt', 24);
+        const cipher = crypto.createCipheriv(algorithm, key, iv);
+
+        let encrypted = '';
+        cipher.on('readable', () => {
+            let chunk;
+            while (null !== (chunk = cipher.read())) {
+                encrypted += chunk.toString('hex');
+            }
+        });
+
+        cipher.on('end', () => {
+            // console.log(encrypted);
+        });
+
+        cipher.write(JSON.stringify(modelData));
+        cipher.end();
+
+        const transaction2 = contract[clientInd].createTransaction('PutGlobalWeights');
+        transaction2.setEndorsingOrganizations('Org1MSP', 'Org2MSP');
+        await transaction2.submit(encrypted, round)
+
         console.log("Client " + clientInd + " received weights and sent back");
     }
     catch (error) {
         console.log("GetRoundWeights " + "Client ID: " + clientInd + " " + error);
     }
+}
+
+const putSymmetricKey = async(clientInd, round) => {
+    try{
+
+        const transaction = contract[0].createTransaction('PutSymmetricKey');
+        const transientData = {
+            password: passwords[round], 
+            iv: ivs[round].toString('hex')
+        }
+        transaction.submit(userNames[clientInd], transientData);
+
+        console.log("Sent symmetric key to client " + clientInd + " for round " + round);
+    }
+    catch(error){
+        console.log("PutPrivateData " + "Client ID: " + clientInd + " " + error);
+    }
+}
+
+const getSymmetricKey = async(clientInd, round) => {
+    try{
+        const transaction = contract[clientInd].createTransaction('GetSymmetricKey');
+        const result = await transaction.submit(round, privateDataCollection[clientInd]);
+        const key = result.toString();
+        const {password, iv} = JSON.parse(key);
+        return {password, iv};
+    }
+    catch(error){
+        console.log("GetSymmetricKey " + "Client ID: " + clientInd + " " + error);
+    }
+}
+
+const requestKey = async(clientInd, round) => {
+    try{
+        const transaction = contract[clientInd].createTransaction('RequestKey');
+        transaction.setEndorsingOrganizations('Org1MSP', 'Org2MSP');
+        const result = await transaction.submit(round);
+    }
+    catch(error){
+        console.log("RequestKey " + "Client ID: " + clientInd + " " + error);
+    }
+}
+
+const getRequests = async() => {
+
+    const transaction = contract[0].createTransaction('GetKeyRequests');
+    transaction.setEndorsingOrganizations('Org1MSP', 'Org2MSP');
+    const result = await transaction.submit();
 }
 
 const fetchGlobalWeights = async (clientInd, round) => {
