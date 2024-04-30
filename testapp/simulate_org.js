@@ -10,7 +10,7 @@ const crypto = require('crypto');
 const {randomInt} = require('crypto')
 
 // 4 orgs in total, 1st org is server's and rest are clients
-let nclients = 5 // (client0 is server, rest are actual clients)
+let nclients = 7 // (client0 is server, rest are actual clients)
 let num_clients_per_org = 2
 let nepochs = 10
 let images_per_class = 30
@@ -37,7 +37,19 @@ let privateDataCollection = {
 let contract = [null, null, null, null, null, null, null, null, null, null, null]
 let gateways = [null, null, null, null, null, null, null, null, null, null, null]
 let models = [null, null, null, null, null, null, null, null, null, null, null]
-let epsilonArray = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]
+// let epsilonArray = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]
+
+const generateRandomArray = (length, min, max) =>
+  Array.from({ length }, () => Math.floor(Math.random() * (max - min + 1)) + min);
+
+// Example usage:
+const length = 11; // length of the array
+const min = 4;     // minimum value
+const max = 12;   // maximum value
+
+let epsilonArray=generateRandomArray(length,min,max)
+// const randomArray = generateRandomArray(length, min, max);
+
 let dataseed = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 
@@ -493,7 +505,7 @@ const initClient = async(clientInd) => {
     try{
 
         const chainCode = "basic";
-        const ccpPath = path.resolve(`../../test-network/organizations/peerOrganizations/${orgName}.example.com/connection-${orgName}.json`);
+        const ccpPath = path.resolve(`../../LDP-FL-Blockchain/organizations/peerOrganizations/${orgName}.example.com/connection-${orgName}.json`);
         const ccpJSON = fs.readFileSync(ccpPath, 'utf8');
         const ccp = JSON.parse(ccpJSON);
 
@@ -714,7 +726,7 @@ const getSessionKey = async(privatedataC, round, clientInd) => {
         }
         const password = keyJSON.password;
         const iv = keyJSON.iv;
-        console.log("Received symmetric key from client " + clientInd + " for round " + round);
+        console.log("Client " + clientInd + " received symmetric key for round " + round);
         return {password, iv};
     }
     catch(error){
@@ -758,6 +770,8 @@ const simulateFL = async() => {
         for(let round=1;round<=25;round++){
             for (let i = 1; i < nclients; ++i) {
                 await trainModelAndPushParams(i, round);
+                const accuracy = await models[i].testModel();
+                acc.push(accuracy);
             }
 
             await getParamsAndPutGlobals(round);
@@ -792,14 +806,13 @@ const simulateFL = async() => {
                     let modelData = JSON.parse(decrypted);
                     await models[i].setWeights(modelData.layers);
                 }
-                const accuracy = await models[i].testModel();
-                acc.push(accuracy);
             }
-            console.log(acc);
+            // console.log(acc);
             roundAccuracies.push(acc);
         }
 
         console.log(roundAccuracies);
+        console.log(epsilonArray)
     }
     catch(error){
         console.log("SimulateFL " + error);
