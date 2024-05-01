@@ -37,7 +37,7 @@ let privateDataCollection = {
 let contract = [null, null, null, null, null, null, null, null, null, null, null]
 let gateways = [null, null, null, null, null, null, null, null, null, null, null]
 let models = [null, null, null, null, null, null, null, null, null, null, null]
-// let epsilonArray = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]
+let epsilonArray = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]
 
 const generateRandomArray = (length, min, max) =>
   Array.from({ length }, () => Math.floor(Math.random() * (max - min + 1)) + min);
@@ -47,7 +47,7 @@ const length = 11; // length of the array
 const min = 4;     // minimum value
 const max = 12;   // maximum value
 
-let epsilonArray=generateRandomArray(length,min,max)
+// let epsilonArray=generateRandomArray(length,min,max)
 // const randomArray = generateRandomArray(length, min, max);
 
 let dataseed = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -94,19 +94,19 @@ class DatasetModel {
 
     async preprocessDataset() { }
 
-    async trainModelAndPerturbWeights() { }
+    async trainModelAndPerturbWeights(epsilon) { }
 
     async testModel() { }
 
     async setWeights(weights) { }
 
-    async weights_ldp() {
+    async weights_ldp(epsilon) {
         let perturbedWeightsArray = tf.tidy(() => {
             let perturbedWeightsArray = [];
             for (const layer of this.model.layers) {
                 const weights = layer.getWeights();
                 for (const weight of weights) {
-                    const perturbedWeight = perturbWeights(tf.clone(weight), 0, 0.15, this.epsilon);
+                    const perturbedWeight = perturbWeights(tf.clone(weight), 0, 0.15, epsilon);
                     perturbedWeightsArray.push(tf.clone(perturbedWeight).arraySync());
                 }
             }
@@ -215,14 +215,14 @@ class MNISTModel extends DatasetModel {
         this.testset.outputs = tf.tensor2d(this.testset.outputs, [this.testset.outputs.length / 10, 10]);
     }
 
-    async trainModelAndPerturbWeights() {
+    async trainModelAndPerturbWeights(epsilon) {
 
         await this.model.fit(this.dataset.inputs, this.dataset.outputs, {
             epochs: nepochs,
             verbose: 0,
         });
 
-        return await this.weights_ldp();
+        return await this.weights_ldp(epsilon);
     }
 
     async testModel() {
@@ -333,13 +333,13 @@ class CIFARModel extends DatasetModel {
         this.testset.outputs = tf.tensor2d(this.testset.outputs, [this.testset.outputs.length / 10, 10]);
     }
 
-    async trainModelAndPerturbWeights() {
+    async trainModelAndPerturbWeights(epsilon) {
         await this.model.fit(this.dataset.inputs, this.dataset.outputs, {
             epochs: nepochs,
             verbose: 0,
         })
 
-        return await this.weights_ldp();
+        return await this.weights_ldp(epsilon);
     }
 
     async testModel() {
@@ -449,7 +449,7 @@ class FashionMNIST extends DatasetModel {
         }
     }
 
-    async trainModelAndPerturbWeights() {
+    async trainModelAndPerturbWeights(epsilon) {
         const xTrain = tf.tensor4d(this.dataset.inputs, [this.dataset.inputs.length / 784, 28, 28, 1]);
         const yTrain = tf.tensor2d(this.dataset.outputs, [this.dataset.outputs.length / 10, 10]);
 
@@ -458,7 +458,7 @@ class FashionMNIST extends DatasetModel {
             verbose: 0,
         });
 
-        return await this.weights_ldp();
+        return await this.weights_ldp(epsilon);
     }
 
     async testModel() {
@@ -505,8 +505,7 @@ const initClient = async(clientInd) => {
     try{
 
         const chainCode = "basic";
-        const ccpPath = path.resolve(`../../LDP-FL-Blockchain/organizations/peerOrganizations/${orgName}.example.com/connection-${orgName}.json`);
-        const ccpJSON = fs.readFileSync(ccpPath, 'utf8');
+        const ccpPath = path.resolve(`../../test-network/organizations/peerOrganizations/${orgName}.example.com/connection-${orgName}.json`);        const ccpJSON = fs.readFileSync(ccpPath, 'utf8');
         const ccp = JSON.parse(ccpJSON);
 
         const caInfo = ccp.certificateAuthorities[`ca.${orgName}.example.com`];
@@ -583,15 +582,15 @@ const initClient = async(clientInd) => {
     }
 }
 
-const trainModelAndPushParams = async (clientInd, round) => {
+const trainModelAndPushParams = async (clientInd, round, epsilon) => {
 
     try {
-        let modelData = await models[clientInd].trainModelAndPerturbWeights();
+        let modelData = await models[clientInd].trainModelAndPerturbWeights(epsilon);
         modelData = await models[clientInd].formatWeights();
         const modelDataString = JSON.stringify(modelData);
         const transaction = contract[clientInd].createTransaction('PutClientParams');
         transaction.setEndorsingOrganizations('Org1MSP', 'Org2MSP');
-        await transaction.submit(modelDataString, epsilonArray[clientInd],round);
+        await transaction.submit(modelDataString, epsilon,round);
         console.log("Client " + clientInd + " trained and sent weights");
     }
     catch (error) {
@@ -766,10 +765,13 @@ let roundAccuracies = [];
 const simulateFL = async() => {
 
     try{
-
+        
         for(let round=1;round<=25;round++){
+            let acc = []
             for (let i = 1; i < nclients; ++i) {
-                await trainModelAndPushParams(i, round);
+                let current_epsilon = randomInt(4, 12);
+                // let current_epsilon = epsilonArray[i];
+                await trainModelAndPushParams(i, round, current_epsilon);
                 const accuracy = await models[i].testModel();
                 acc.push(accuracy);
             }
@@ -790,7 +792,6 @@ const simulateFL = async() => {
                 await putSessionKey(privatedataC, round);
             }
 
-            let acc = []
 
             for(let i=1;i<nclients;i++){
                 let encryptedParams = await getEncryptedParams(i, round);
